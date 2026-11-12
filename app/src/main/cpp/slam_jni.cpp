@@ -56,9 +56,9 @@ public:
         cv_.notify_one();
     }
 
-    void setPriorMap(const std::vector<Eigen::Vector3f>& pts) {
+    void setPriorMap(const std::vector<Eigen::Vector3f>& pts, const std::vector<float>& inten) {
         std::lock_guard<std::mutex> ll(lio_mtx_);
-        lio.setPriorMap(pts);
+        lio.setPriorMap(pts, inten);
     }
 
     mndt::Lio lio;
@@ -142,12 +142,26 @@ JNIEXPORT void JNICALL Java_com_example_mobilendt_SlamNative_setInitialPose(JNIE
 }
 
 JNIEXPORT jboolean JNICALL Java_com_example_mobilendt_SlamNative_setPriorMap(JNIEnv* env, jclass, jlong h,
-                                                                            jfloatArray xyz, jint n) {
+                                                                            jfloatArray xyz, jfloatArray inten,
+                                                                            jint n) {
     std::vector<Eigen::Vector3f> pts(n);
     env->GetFloatArrayRegion(xyz, 0, n * 3, reinterpret_cast<float*>(pts.data()));
-    E(h)->setPriorMap(pts);
+    std::vector<float> in;
+    if (inten != nullptr) {
+        in.resize(n);
+        env->GetFloatArrayRegion(inten, 0, n, in.data());
+    }
+    E(h)->setPriorMap(pts, in);
     LOGI("prior map: %d points", n);
     return E(h)->lio.hasPriorMap();
+}
+
+/// Points closer than this (m) are ignored by SLAM / localisation. Applies from the next scan.
+JNIEXPORT void JNICALL Java_com_example_mobilendt_SlamNative_setBlind(JNIEnv*, jclass, jlong h, jfloat m) {
+    Engine* e = E(h);
+    std::lock_guard<std::mutex> ll(e->lio_mtx_);
+    e->lio.setBlind(m);
+    LOGI("blind %.2f m", m);
 }
 
 JNIEXPORT void JNICALL Java_com_example_mobilendt_SlamNative_stop(JNIEnv*, jclass, jlong h) {
@@ -186,9 +200,9 @@ JNIEXPORT void JNICALL Java_com_example_mobilendt_SlamNative_status(JNIEnv* env,
 
 JNIEXPORT jint JNICALL Java_com_example_mobilendt_SlamNative_map(JNIEnv* env, jclass, jlong h, jfloatArray out,
                                                                  jint maxPts) {
-    std::vector<float> tmp(size_t(maxPts) * 3);
+    std::vector<float> tmp(size_t(maxPts) * 4);   // x, y, z, intensity
     int n = E(h)->lio.mapSnapshot(tmp.data(), maxPts);
-    env->SetFloatArrayRegion(out, 0, n * 3, tmp.data());
+    env->SetFloatArrayRegion(out, 0, n * 4, tmp.data());
     return n;
 }
 

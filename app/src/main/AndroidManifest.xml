@@ -21,5 +21,6 @@
         </activity>
         <activity android:name=".PcdListActivity" android:exported="false" />
         <activity android:name=".PcdViewActivity" android:exported="false" />
+        <activity android:name=".SettingsActivity" android:exported="false" />
     </application>
 </manifest>

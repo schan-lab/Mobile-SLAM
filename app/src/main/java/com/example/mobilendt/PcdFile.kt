@@ -6,11 +6,16 @@ import java.io.InputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
-/** Minimal PCD reader (ascii / binary / binary_compressed), extracting x, y, z only. */
-class PcdData(val xyz: FloatArray, val n: Int, val totalPoints: Int, val fields: String, val format: String) {
+/**
+ * Minimal PCD reader (ascii / binary / binary_compressed), extracting x, y, z and, when present, intensity.
+ * [inten] is null when the file has no intensity field.
+ */
+class PcdData(val xyz: FloatArray, val inten: FloatArray?, val n: Int, val totalPoints: Int, val fields: String,
+              val format: String) {
     val min = FloatArray(3) { Float.MAX_VALUE }
     val max = FloatArray(3) { -Float.MAX_VALUE }
     var zLo = 0f; var zHi = 1f   // 2nd / 98th percentile of z (colour range)
+    var iHi = 255f               // intensity mapped to the top of the colour scale
 
     init {
         for (i in 0 until n) for (k in 0..2) {
@@ -25,6 +30,13 @@ class PcdData(val xyz: FloatArray, val n: Int, val totalPoints: Int, val fields:
             zLo = zs[(zs.size * 0.02).toInt()]
             zHi = zs[minOf(zs.size - 1, (zs.size * 0.98).toInt())]
             if (zHi - zLo < 0.1f) zHi = zLo + 0.1f
+            if (inten != null) {
+                // Livox reflectivity is 0..255; other files may use 0..1 or larger ranges
+                val v = FloatArray((n + step - 1) / step) { inten[it * step] }
+                v.sort()
+                val p99 = v[minOf(v.size - 1, (v.size * 0.99).toInt())]
+                iHi = if (p99 > 1.5f && p99 <= 255f) 255f else maxOf(p99, 1e-6f)
+            }
         }
     }
 }
@@ -58,10 +70,12 @@ object PcdFile {
         if (counts.isEmpty()) counts = List(fields.size) { 1 }
         val ix = fields.indexOf("x"); val iy = fields.indexOf("y"); val iz = fields.indexOf("z")
         require(ix >= 0 && iy >= 0 && iz >= 0) { "x/y/z フィールドがありません (${fields.joinToString(" ")})" }
+        val ii = fields.indexOfFirst { it.lowercase() in setOf("intensity", "reflectivity", "i") }
 
         val stride = if (points > MAX_POINTS) (points + MAX_POINTS - 1) / MAX_POINTS else 1
         val outN = (points + stride - 1) / stride
         val xyz = FloatArray(outN * 3)
+        val inten = if (ii >= 0) FloatArray(outN) else null
         var n = 0
 
         // byte offset of each field within a point record
@@ -91,6 +105,7 @@ object PcdFile {
                         val tok = t.split(Regex("\\s+"))
                         val x = tok[col[ix]].toFloat(); val y = tok[col[iy]].toFloat(); val z = tok[col[iz]].toFloat()
                         if (x.isFinite() && y.isFinite() && z.isFinite()) {
+                            if (inten != null) inten[n] = tok[col[ii]].toFloatOrNull() ?: 0f
                             xyz[3 * n] = x; xyz[3 * n + 1] = y; xyz[3 * n + 2] = z; n++
                         }
                     }
@@ -112,6 +127,7 @@ object PcdFile {
                         val x = value(b, base + offs[ix], ix); val y = value(b, base + offs[iy], iy)
                         val z = value(b, base + offs[iz], iz)
                         if (x.isFinite() && y.isFinite() && z.isFinite()) {
+                            if (inten != null) inten[n] = value(b, base + offs[ii], ii)
                             xyz[3 * n] = x; xyz[3 * n + 1] = y; xyz[3 * n + 2] = z; n++
                         }
                     }
@@ -132,13 +148,14 @@ object PcdFile {
                     val y = value(b, points * offs[iy] + gi * sizes[iy] * counts[iy], iy)
                     val z = value(b, points * offs[iz] + gi * sizes[iz] * counts[iz], iz)
                     if (x.isFinite() && y.isFinite() && z.isFinite()) {
+                        if (inten != null) inten[n] = value(b, points * offs[ii] + gi * sizes[ii] * counts[ii], ii)
                         xyz[3 * n] = x; xyz[3 * n + 1] = y; xyz[3 * n + 2] = z; n++
                     }
                 }
             }
             else -> error("未対応の DATA 形式: $data")
         }
-        return PcdData(xyz, n, points, fields.joinToString(" "), data)
+        return PcdData(xyz, inten, n, points, fields.joinToString(" "), data)
     }
 
     private fun readLine(ins: DataInputStream): String? {

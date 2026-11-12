@@ -16,6 +16,8 @@ class Map3DView(
 ) : OrbitGLView(context) {
 
     @Volatile private var follow = true
+    /** Point colouring: [Settings.COLOR_INTENSITY] or [Settings.COLOR_HEIGHT]. */
+    @Volatile var colorMode = Settings.COLOR_INTENSITY
 
     init {
         setRenderer(R())
@@ -66,8 +68,8 @@ class Map3DView(
         private lateinit var vbo: IntArray  // map, scan, traj, pose, live
 
         private val maxMap = 800_000
-        private val mapArr = FloatArray(maxMap * 3)
-        private val mapBuf = GlPoints.floatBuffer(maxMap * 3)
+        private val mapArr = FloatArray(maxMap * 4)          // x, y, z, intensity
+        private val mapBuf = GlPoints.floatBuffer(maxMap * 4)
         private var mapN = 0
         private val scanArr = FloatArray(30_000 * 3)
         private val scanBuf = GlPoints.floatBuffer(30_000 * 3)
@@ -76,8 +78,8 @@ class Map3DView(
         private val poseBuf = GlPoints.floatBuffer(4 * 3)
         private val guessBuf = GlPoints.floatBuffer(8 * 3)
         private val st = DoubleArray(SlamNative.S.SIZE)
-        private val liveArr = FloatArray(live.capacity * 3)
-        private val liveBuf = GlPoints.floatBuffer(live.capacity * 3)
+        private val liveArr = FloatArray(live.capacity * 4)
+        private val liveBuf = GlPoints.floatBuffer(live.capacity * 4)
         private var lastPull = 0L
 
         private val proj = FloatArray(16); private val mvp = FloatArray(16)
@@ -113,16 +115,16 @@ class Map3DView(
 
             if (liveMode) {
                 val liveN = live.snapshot(liveArr)
-                gp.upload(vbo[4], liveBuf, liveArr, liveN)
+                gp.upload(vbo[4], liveBuf, liveArr, liveN, comps = 4)
                 gp.begin(mvp, -1.0f, 2.5f)
-                gp.draw(vbo[4], GL_POINTS, liveN, 0, 3f)
+                gp.draw(vbo[4], GL_POINTS, liveN, colorMode, 3f, comps = 4)
                 return
             }
 
             val now = System.currentTimeMillis()
             if (now - lastPull > 500) {
                 mapN = slam.map(mapArr, maxMap)
-                gp.upload(vbo[0], mapBuf, mapArr, mapN)
+                gp.upload(vbo[0], mapBuf, mapArr, mapN, comps = 4)
                 lastPull = now
             }
             val scanN = slam.scan(scanArr, 30_000)
@@ -138,7 +140,7 @@ class Map3DView(
             gp.upload(vbo[3], poseBuf, pose, 3)
 
             gp.begin(mvp, pz - 1.5f, pz + 2.0f)
-            gp.draw(vbo[0], GL_POINTS, mapN, 0, 3f)                       // map: height colour
+            gp.draw(vbo[0], GL_POINTS, mapN, colorMode, 3f, comps = 4)    // map: intensity / height colour
             gp.draw(vbo[1], GL_POINTS, scanN, 1, 4f, 1f, 1f, 1f)          // current scan: white
             glLineWidth(4f)
             gp.draw(vbo[2], GL_LINE_STRIP, trajN, 1, 1f, 1f, 0.2f, 1f)    // trajectory: magenta

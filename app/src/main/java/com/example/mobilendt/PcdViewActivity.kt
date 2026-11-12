@@ -114,7 +114,12 @@ class PcdViewActivity : Activity() {
         sizeBtn.text = "点サイズ " + "●".repeat(sizeIdx + 1)
     }
 
-    override fun onResume() { super.onResume(); view.onResume() }
+    override fun onResume() {
+        super.onResume()
+        view.colorMode = Settings.colorMode(this)
+        view.onResume()
+        view.requestRender()
+    }
     override fun onPause() { view.onPause(); super.onPause() }
 
     companion object { const val EXTRA_NAME = "name" }

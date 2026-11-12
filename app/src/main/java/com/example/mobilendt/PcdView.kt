@@ -14,6 +14,8 @@ class PcdView(context: Context) : OrbitGLView(context) {
     @Volatile private var data: PcdData? = null
     @Volatile private var dirty = false
     @Volatile var pointSize = 2.5f
+    /** Point colouring: [Settings.COLOR_INTENSITY] or [Settings.COLOR_HEIGHT]. */
+    @Volatile var colorMode = Settings.COLOR_INTENSITY
 
     init {
         setRenderer(R())
@@ -50,6 +52,7 @@ class PcdView(context: Context) : OrbitGLView(context) {
         private lateinit var vbo: IntArray   // cloud, axes
         private var n = 0
         private var zLo = 0f; private var zHi = 1f
+        private var comps = 3; private var iHi = 255f
         private val proj = FloatArray(16); private val mvp = FloatArray(16)
         private val axisBuf = GlPoints.floatBuffer(6 * 3)
 
@@ -70,9 +73,20 @@ class PcdView(context: Context) : OrbitGLView(context) {
         override fun onDrawFrame(gl: GL10?) {
             val d = data
             if (dirty && d != null) {
-                val buf = GlPoints.floatBuffer(d.n * 3)
-                gp.upload(vbo[0], buf, d.xyz, d.n, GL_STATIC_DRAW)
-                n = d.n; zLo = d.zLo; zHi = d.zHi
+                val inten = d.inten
+                if (inten != null) {
+                    // interleave x, y, z, intensity straight into the upload buffer
+                    val buf = GlPoints.floatBuffer(d.n * 4)
+                    for (i in 0 until d.n) { buf.put(d.xyz, 3 * i, 3); buf.put(inten[i]) }
+                    buf.flip()
+                    gp.uploadBuffer(vbo[0], buf, d.n, GL_STATIC_DRAW, comps = 4)
+                    comps = 4
+                } else {
+                    val buf = GlPoints.floatBuffer(d.n * 3)
+                    gp.upload(vbo[0], buf, d.xyz, d.n, GL_STATIC_DRAW)
+                    comps = 3
+                }
+                n = d.n; zLo = d.zLo; zHi = d.zHi; iHi = d.iHi
                 val axes = floatArrayOf(0f, 0f, 0f, 1f, 0f, 0f, 0f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 0f, 0f, 0f, 1f)
                 gp.upload(vbo[1], axisBuf, axes, 6)
                 dirty = false
@@ -81,7 +95,8 @@ class PcdView(context: Context) : OrbitGLView(context) {
             if (n == 0) return
             computeMvp(proj, mvp)
             gp.begin(mvp, zLo, zHi)
-            gp.draw(vbo[0], GL_POINTS, n, 0, pointSize)
+            gp.setIntensityMax(iHi)
+            gp.draw(vbo[0], GL_POINTS, n, if (comps == 4) colorMode else 0, pointSize, comps = comps)
             // origin axes (1 m): X red, Y green, Z blue
             glLineWidth(5f)
             gp.draw(vbo[1], GL_LINES, 2, 1, 1f, 1f, 0.3f, 0.35f, first = 0)
