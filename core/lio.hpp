@@ -21,7 +21,7 @@ using Mat3 = Eigen::Matrix3d;
 
 struct LioConfig {
     double scan_period = 0.1;     // s, Mid-360 10 Hz
-    double blind = 0.5;           // m, ignore points closer than this (LiDAR frame)
+    double blind = 1.5;           // m, ignore points closer than this (LiDAR frame)
     double max_range = 60.0;      // m
     double scan_ds = 0.2;         // m, voxel size for scan downsampling
     double map_res = 0.2;         // m, voxel size of the registration map
@@ -71,8 +71,12 @@ public:
     /// Selects mapping (LIO + map building) or localisation (NDT against the prior map). Call before reset().
     void setMode(LioMode m) { mode_ = m; }
     LioMode mode() const { return mode_; }
+    /// Points closer than this (m, LiDAR frame) are ignored. Takes effect from the next scan.
+    void setBlind(double m) { cfg_.blind = m < 0 ? 0 : m; }
+    double blind() const { return cfg_.blind; }
     /// Sets the prior map for localisation (world frame). Builds the NDT grid.
-    void setPriorMap(const std::vector<Eigen::Vector3f>& pts);
+    /// intensity (optional, same length as pts) is only used for display.
+    void setPriorMap(const std::vector<Eigen::Vector3f>& pts, const std::vector<float>& intensity = {});
     bool hasPriorMap() const { return !ndt_map_.empty(); }
     /// Initial guess for localisation (world xy + yaw). Default: origin, yaw searched.
     void setInitialGuess(const Vec3& p, double yaw, bool search_yaw) {
@@ -114,7 +118,8 @@ public:
         std::lock_guard<std::mutex> l(out_mtx_);
         return out_scan_;
     }
-    /// Copies up to maxPts display-map points (xyz interleaved) with uniform stride; returns count.
+    /// Copies up to maxPts display-map points (x, y, z, intensity interleaved; intensity < 0 = unknown)
+    /// with uniform stride; returns count.
     int mapSnapshot(float* out, int maxPts) const;
     bool savePcd(const std::string& path) const;
     double currentTime() const { return t_state_; }
@@ -144,7 +149,7 @@ private:
     void propagateTo(double t_end, std::vector<Seg>& segs);
     void processScan(const Scan& s);
     void iekfUpdate(const std::vector<Vec3>& body);
-    void publish(const std::vector<Vec3>& body);
+    void publish(const std::vector<Vec3>& body, const std::vector<float>& inten);
     void localize(const std::vector<Vec3>& body);
     bool globalSearch(const std::vector<Vec3>& src, const Vec3& center, double yaw0, bool search_yaw);
     void poseUpdate(const Mat3& Rm, const Vec3& pm);
@@ -176,6 +181,7 @@ private:
     LioMode mode_ = LioMode::Mapping;
     NdtMap ndt_map_;
     std::vector<Eigen::Vector3f> prior_pts_;
+    std::vector<float> prior_int_;   // empty, or one intensity per prior point
     LocState loc_state_ = LocState::None;
     int loc_fail_ = 0;
     Vec3 init_guess_p_ = Vec3::Zero();

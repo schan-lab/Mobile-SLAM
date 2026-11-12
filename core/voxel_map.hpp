@@ -68,12 +68,18 @@ public:
     void clear() {
         keys_.clear();
         pts_.clear();
+        inten_.clear();
     }
-    void add(const Eigen::Vector3f& p) {
+    /// intensity: reflectivity 0..255, or negative when unknown.
+    void add(const Eigen::Vector3f& p, float intensity = -1.f) {
         uint64_t k = pack(c(p.x()), c(p.y()), c(p.z()));
-        if (keys_.emplace(k, 0).second) pts_.push_back(p);
+        if (keys_.emplace(k, 0).second) {
+            pts_.push_back(p);
+            inten_.push_back(intensity);
+        }
     }
     const std::vector<Eigen::Vector3f>& points() const { return pts_; }
+    const std::vector<float>& intensities() const { return inten_; }
 
 private:
     int c(float v) const { return static_cast<int>(std::floor(v * inv_)); }
@@ -84,6 +90,7 @@ private:
     double inv_;
     std::unordered_map<uint64_t, char> keys_;
     std::vector<Eigen::Vector3f> pts_;
+    std::vector<float> inten_;
 };
 
 }  // namespace mndt

@@ -6,7 +6,10 @@ class SlamNative {
 
     /** mode: 0 = mapping (SLAM), 1 = localisation (NDT against the prior map). */
     fun start(mode: Int) = start(handle, mode)
-    fun setPriorMap(xyz: FloatArray, n: Int): Boolean = setPriorMap(handle, xyz, n)
+    /** inten: optional per-point intensity (display only). */
+    fun setPriorMap(xyz: FloatArray, inten: FloatArray?, n: Int): Boolean = setPriorMap(handle, xyz, inten, n)
+    /** Points closer than [m] metres are ignored. Applies from the next scan. */
+    fun setBlind(m: Float) = setBlind(handle, m)
     /** Switch mode while stopped (resets state). */
     fun prepare(mode: Int) = prepare(handle, mode)
     /** Initial guess for localisation; hasYaw=false searches all headings. */
@@ -15,6 +18,7 @@ class SlamNative {
     fun stop() = stop(handle)
     fun push(type: Int, buf: ByteArray, len: Int) = push(handle, type, buf, len)
     fun status(out: DoubleArray) = status(handle, out)
+    /** Fills [out] with x, y, z, intensity per point (intensity < 0 = unknown). */
     fun map(out: FloatArray, maxPts: Int): Int = map(handle, out, maxPts)
     fun trajectory(out: FloatArray, maxPts: Int): Int = trajectory(handle, out, maxPts)
     fun scan(out: FloatArray, maxPts: Int): Int = scan(handle, out, maxPts)
@@ -59,7 +63,8 @@ class SlamNative {
         @JvmStatic private external fun create(): Long
         @JvmStatic private external fun destroy(h: Long)
         @JvmStatic private external fun start(h: Long, mode: Int)
-        @JvmStatic private external fun setPriorMap(h: Long, xyz: FloatArray, n: Int): Boolean
+        @JvmStatic private external fun setPriorMap(h: Long, xyz: FloatArray, inten: FloatArray?, n: Int): Boolean
+        @JvmStatic private external fun setBlind(h: Long, m: Float)
         @JvmStatic private external fun prepare(h: Long, mode: Int)
         @JvmStatic private external fun setInitialPose(h: Long, x: Float, y: Float, z: Float, yaw: Float, hasYaw: Boolean)
         @JvmStatic private external fun stop(h: Long)

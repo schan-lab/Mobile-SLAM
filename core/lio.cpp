@@ -97,7 +97,8 @@ void Lio::reset() {
     loc_accum_.clear();
     loc_accum_scans_ = 0;
     if (mode_ == LioMode::Localization)
-        for (const auto& p : prior_pts_) vis_.add(p);
+        for (size_t i = 0; i < prior_pts_.size(); ++i)
+            vis_.add(prior_pts_[i], prior_int_.empty() ? -1.f : prior_int_[i]);
     stats_.vis_size = vis_.points().size();
     out_status_ = LioStatus::WaitingData;
     out_stats_ = stats_;   // fresh stats, but keeps vis_size of the prior map
@@ -266,7 +267,9 @@ void Lio::processScan(const Scan& s) {
     const Mat3 Re_T = R_.transpose();
     const Vec3 pe = p_;
     std::vector<Vec3> body;
+    std::vector<float> inten;
     body.reserve(s.pts.size());
+    inten.reserve(s.pts.size());
     const double b2 = cfg_.blind * cfg_.blind, r2 = cfg_.max_range * cfg_.max_range;
     size_t k = 0;
     for (const auto& rp : s.pts) {
@@ -285,6 +288,7 @@ void Lio::processScan(const Scan& s) {
             pi = Re_T * (Ri * pi + Pi - pe);
         }
         body.push_back(pi);
+        inten.push_back(rp.refl);
     }
     stats_.scan_points = static_cast<int>(body.size());
 
@@ -305,7 +309,7 @@ void Lio::processScan(const Scan& s) {
     stats_.avg_ms = stats_.scans == 0 ? ms : 0.95 * stats_.avg_ms + 0.05 * ms;
     stats_.scans++;
     stats_.map_size = map_.size();
-    publish(body);
+    publish(body, inten);
 }
 
 void Lio::iekfUpdate(const std::vector<Vec3>& body) {
@@ -395,13 +399,15 @@ void Lio::iekfUpdate(const std::vector<Vec3>& body) {
     stats_.effective = eff;
 }
 
-void Lio::publish(const std::vector<Vec3>& body) {
+void Lio::publish(const std::vector<Vec3>& body, const std::vector<float>& inten) {
     std::vector<Eigen::Vector3f> scan;
     scan.reserve(body.size() / 4 + 1);
     for (size_t i = 0; i < body.size(); i += 4) scan.push_back((R_ * body[i] + p_).cast<float>());
     std::lock_guard<std::mutex> l(out_mtx_);
     const bool mapping = mode_ == LioMode::Mapping;
-    if (mapping) for (const auto& p : body) vis_.add((R_ * p + p_).cast<float>());
+    if (mapping) {
+        for (size_t i = 0; i < body.size(); ++i) vis_.add((R_ * body[i] + p_).cast<float>(), inten[i]);
+    }
     stats_.vis_size = vis_.points().size();
     stats_.loc_state = static_cast<int>(loc_state_);
     stats_.loc_fail = loc_fail_;
@@ -412,13 +418,15 @@ void Lio::publish(const std::vector<Vec3>& body) {
     out_scan_.swap(scan);
 }
 
-void Lio::setPriorMap(const std::vector<Eigen::Vector3f>& pts) {
+void Lio::setPriorMap(const std::vector<Eigen::Vector3f>& pts, const std::vector<float>& intensity) {
     prior_pts_ = pts;
+    prior_int_ = intensity.size() == pts.size() ? intensity : std::vector<float>();
     ndt_map_.build(prior_pts_, cfg_.ndt_res);
     std::lock_guard<std::mutex> l(out_mtx_);
     if (mode_ == LioMode::Localization) {
         vis_.clear();
-        for (const auto& p : prior_pts_) vis_.add(p);
+        for (size_t i = 0; i < prior_pts_.size(); ++i)
+            vis_.add(prior_pts_[i], prior_int_.empty() ? -1.f : prior_int_[i]);
     }
     // publish the display-map size now: the UI decides map vs live view from it before any scan arrives
     stats_.vis_size = out_stats_.vis_size = vis_.points().size();
@@ -543,15 +551,17 @@ void Lio::localize(const std::vector<Vec3>& body) {
 int Lio::mapSnapshot(float* out, int maxPts) const {
     std::lock_guard<std::mutex> l(out_mtx_);
     const auto& pts = vis_.points();
+    const auto& in = vis_.intensities();
     const size_t n = pts.size();
     if (n == 0 || maxPts <= 0) return 0;
     const double stride = n > size_t(maxPts) ? double(n) / maxPts : 1.0;
     int c = 0;
     for (double i = 0; i < n && c < maxPts; i += stride, ++c) {
         const auto& p = pts[size_t(i)];
-        out[3 * c] = p.x();
-        out[3 * c + 1] = p.y();
-        out[3 * c + 2] = p.z();
+        out[4 * c] = p.x();
+        out[4 * c + 1] = p.y();
+        out[4 * c + 2] = p.z();
+        out[4 * c + 3] = in[size_t(i)];
     }
     return c;
 }
@@ -559,14 +569,18 @@ int Lio::mapSnapshot(float* out, int maxPts) const {
 bool Lio::savePcd(const std::string& path) const {
     std::lock_guard<std::mutex> l(out_mtx_);
     const auto& pts = vis_.points();
+    const auto& in = vis_.intensities();
     FILE* f = std::fopen(path.c_str(), "wb");
     if (!f) return false;
     std::fprintf(f,
-                 "# .PCD v0.7 - Point Cloud Data file format\nVERSION 0.7\nFIELDS x y z\nSIZE 4 4 4\n"
-                 "TYPE F F F\nCOUNT 1 1 1\nWIDTH %zu\nHEIGHT 1\nVIEWPOINT 0 0 0 1 0 0 0\nPOINTS %zu\n"
+                 "# .PCD v0.7 - Point Cloud Data file format\nVERSION 0.7\nFIELDS x y z intensity\nSIZE 4 4 4 4\n"
+                 "TYPE F F F F\nCOUNT 1 1 1 1\nWIDTH %zu\nHEIGHT 1\nVIEWPOINT 0 0 0 1 0 0 0\nPOINTS %zu\n"
                  "DATA binary\n",
                  pts.size(), pts.size());
-    for (const auto& p : pts) std::fwrite(p.data(), sizeof(float), 3, f);
+    for (size_t i = 0; i < pts.size(); ++i) {
+        const float rec[4] = {pts[i].x(), pts[i].y(), pts[i].z(), in[i] < 0 ? 0.f : in[i]};
+        std::fwrite(rec, sizeof(float), 4, f);
+    }
     std::fclose(f);
     return true;
 }

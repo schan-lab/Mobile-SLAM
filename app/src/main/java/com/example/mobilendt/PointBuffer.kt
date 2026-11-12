@@ -18,10 +18,15 @@ class PointBuffer(val capacity: Int) {
         if (size < capacity) size++
     }
 
-    /** Copies current points into [outXyz]; returns the point count. */
+    /** Copies current points into [out] as x, y, z, reflectivity (0..255); returns the point count. */
     @Synchronized
-    fun snapshot(outXyz: FloatArray): Int {
-        System.arraycopy(xyz, 0, outXyz, 0, size * 3)
+    fun snapshot(out: FloatArray): Int {
+        for (i in 0 until size) {
+            out[4 * i] = xyz[3 * i]
+            out[4 * i + 1] = xyz[3 * i + 1]
+            out[4 * i + 2] = xyz[3 * i + 2]
+            out[4 * i + 3] = (refl[i].toInt() and 0xFF).toFloat()
+        }
         return size
     }
 }

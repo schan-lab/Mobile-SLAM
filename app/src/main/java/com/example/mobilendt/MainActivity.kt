@@ -100,12 +100,17 @@ class MainActivity : Activity() {
             setPadding(Ui.dpi(c, 12f), 0, Ui.dpi(c, 12f), 0)
             setOnClickListener { startActivity(android.content.Intent(c, PcdListActivity::class.java)) }
         }
+        val settingsBtn = Ui.button(c, "設定", Ui.GREY, radius = 16f, textSize = 12f).apply {
+            setPadding(Ui.dpi(c, 12f), 0, Ui.dpi(c, 12f), 0)
+            setOnClickListener { startActivity(android.content.Intent(c, SettingsActivity::class.java)) }
+        }
         val phaseRow = LinearLayout(c).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             addView(phase)
             addView(headline, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = Ui.dpi(c, 10f) })
             addView(viewerBtn, LinearLayout.LayoutParams(-2, Ui.dpi(c, 32f)))
+            addView(settingsBtn, LinearLayout.LayoutParams(-2, Ui.dpi(c, 32f)).apply { marginStart = Ui.dpi(c, 6f) })
         }
         details = Ui.text(c, 11f, Ui.TEXT_DIM).apply {
             typeface = Typeface.MONOSPACE
@@ -283,7 +288,7 @@ class MainActivity : Activity() {
             val r = runCatching {
                 val d = contentResolver.openInputStream(uri)!!.use { PcdFile.read(it) }
                 require(d.n > 100) { "点が少なすぎます (${d.n}点)" }
-                check(slam.setPriorMap(d.xyz, d.n)) { "NDTマップを作れませんでした" }
+                check(slam.setPriorMap(d.xyz, d.inten, d.n)) { "NDTマップを作れませんでした" }
                 d.n
             }
             runOnUiThread {
@@ -373,8 +378,15 @@ class MainActivity : Activity() {
 
     // ------------------------------------------------------------------ lifecycle
 
+    /** Pushes the saved settings to the SLAM core and the view (called whenever we come to the front). */
+    private fun applySettings() {
+        slam.setBlind(Settings.blind(this))
+        mapView.colorMode = Settings.colorMode(this)
+    }
+
     override fun onStart() {
         super.onStart()
+        applySettings()
         receiver.start()
         mapView.onResume()
         prevT = System.nanoTime()

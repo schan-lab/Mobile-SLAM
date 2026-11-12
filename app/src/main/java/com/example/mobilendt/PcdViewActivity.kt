@@ -130,7 +130,9 @@ class PcdViewActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        view.colorMode = Settings.colorMode(this)
         view.onResume()
+        view.requestRender()
     }
     override fun onPause() {
         view.onPause()
