@@ -12,5 +12,5 @@ add_library(mobilendt SHARED
     ${ROOT}/core/ndt.cpp)
 
 target_include_directories(mobilendt PRIVATE ${ROOT}/core ${ROOT}/third_party/eigen)
-target_compile_options(mobilendt PRIVATE -O3 -ffast-math -fno-finite-math-only -DEIGEN_NO_DEBUG)
+target_compile_options(mobilendt PRIVATE -O3 -ffast-math -fno-finite-math-only -DEIGEN_NO_DEBUG -DEIGEN_MPL2_ONLY)
 target_link_libraries(mobilendt log)
