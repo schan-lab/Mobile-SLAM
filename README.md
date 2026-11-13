@@ -8,7 +8,7 @@ PC も ROS も不要です。
 </p>
 
 <p align="center">
-<a href="https://github.com/ron0401/Mobile-SLAM/actions/workflows/build.yml"><img src="https://github.com/ron0401/Mobile-SLAM/actions/workflows/build.yml/badge.svg" alt="Build APK"></a>
+<a href="https://github.com/schan-lab/Mobile-SLAM/actions/workflows/build.yml"><img src="https://github.com/schan-lab/Mobile-SLAM/actions/workflows/build.yml/badge.svg" alt="Build APK"></a>
 <img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT License">
 <img src="https://img.shields.io/badge/Android-10%2B-3ddc84" alt="Android 10+">
 </p>
@@ -58,14 +58,14 @@ PC も ROS も不要です。
 
 ## インストール
 
-[Actions](https://github.com/ron0401/Mobile-SLAM/actions/workflows/build.yml) の最新の実行結果から `MobileSLAM-apk` をダウンロードして、中の APK をインストールします。
+[Actions](https://github.com/schan-lab/Mobile-SLAM/actions/workflows/build.yml) の最新の実行結果から `MobileSLAM-apk` をダウンロードして、中の APK をインストールします。
 
 デバッグ署名の APK なので、ビルドごとに署名が変わります。入れ直すときは先にアンインストールしてください。
 
 ## ビルド
 
 ```sh
-git clone https://github.com/ron0401/Mobile-SLAM.git
+git clone https://github.com/schan-lab/Mobile-SLAM.git
 cd Mobile-SLAM
 ./gradlew assembleDebug
 # → app/build/outputs/apk/debug/app-debug.apk
