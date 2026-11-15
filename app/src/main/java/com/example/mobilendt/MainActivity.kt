@@ -98,7 +98,7 @@ class MainActivity : Activity() {
             setPadding(Ui.dpi(c, 10f), Ui.dpi(c, 3f), Ui.dpi(c, 10f), Ui.dpi(c, 3f))
         }
         headline = Ui.text(c, 15f, bold = true)
-        val viewerBtn = Ui.button(c, getString(R.string.saved_maps), Ui.GREY, radius = 16f, textSize = 12f).apply {
+        val viewerBtn = Ui.button(c, getString(R.string.pcd_viewer), Ui.GREY, radius = 16f, textSize = 12f).apply {
             setPadding(Ui.dpi(c, 12f), 0, Ui.dpi(c, 12f), 0)
             setOnClickListener { startActivity(android.content.Intent(c, PcdListActivity::class.java)) }
         }

@@ -16,9 +16,9 @@ PC も ROS も不要です。
 <p align="center">
 <img src="docs/live.png" width="30%" alt="ライブ表示">
 <img src="docs/mapping.png" width="30%" alt="マップ作成中">
-<img src="docs/maps.png" width="30%" alt="保存済みマップ">
+<img src="docs/maps.png" width="30%" alt="PCD ビューア">
 </p>
-<p align="center"><sub>左から：ライブ表示 / マップ作成中 / 保存済みマップ</sub></p>
+<p align="center"><sub>左から：ライブ表示 / マップ作成中 / PCD ビューア</sub></p>
 
 ## できること
 

@@ -2,6 +2,7 @@ package com.example.mobilendt
 
 import android.app.Activity
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
@@ -63,13 +64,7 @@ class PcdViewActivity : Activity() {
             }
         }
         val share = Ui.button(c, getString(R.string.share), Ui.ACCENT, textSize = 14f).apply {
-            setOnClickListener {
-                startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
-                    type = "application/octet-stream"
-                    putExtra(Intent.EXTRA_STREAM, uri)
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                }, getString(R.string.share_pcd)))
-            }
+            setOnClickListener { share(c, uri) }
         }
         val h = Ui.dpi(c, 50f)
         val controls = LinearLayout(c).apply {
@@ -135,5 +130,17 @@ class PcdViewActivity : Activity() {
         super.onPause()
     }
 
-    companion object { const val EXTRA_NAME = "name" }
+    companion object {
+        const val EXTRA_NAME = "name"
+
+        /** Opens the share sheet for a PCD (a MediaStore or document URI). */
+        fun share(activity: Activity, uri: Uri) {
+            val send = Intent(Intent.ACTION_SEND).apply {
+                type = "application/octet-stream"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            activity.startActivity(Intent.createChooser(send, activity.getString(R.string.share_pcd)))
+        }
+    }
 }

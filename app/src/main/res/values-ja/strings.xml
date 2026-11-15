@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="saved_maps">保存済みマップ</string>
+    <string name="pcd_viewer">PCD ビューア</string>
     <string name="settings">設定</string>
     <string name="record">● 記録</string>
     <string name="record_size">■ %1$.0fMB</string>
@@ -125,7 +125,7 @@
     <string name="pick_map_title">使うマップを選択</string>
     <string name="open_file">ファイルを開く</string>
     <string name="list_sub_pick">"Download/MobileNDT   タップで選択"</string>
-    <string name="list_sub">"Download/MobileNDT   タップで表示・長押しで削除"</string>
+    <string name="list_sub">"Download/MobileNDT   タップで表示・長押しで共有・削除"</string>
     <string name="list_empty">まだ保存されたマップがありません。\nマップ作成後に「PCD保存」を押してください。\nPC などから受け取った PCD は「ファイルを開く」で開けます。</string>
     <string name="list_meta">"%1$s   %2$.1f MB   約%3$s点"</string>
     <string name="delete_title">削除しますか？</string>

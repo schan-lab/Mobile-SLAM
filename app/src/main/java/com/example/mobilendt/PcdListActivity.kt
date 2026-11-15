@@ -34,7 +34,7 @@ class PcdListActivity : Activity() {
         val pad = Ui.dpi(c, 16f)
 
         val back = Ui.button(c, "←", Ui.GREY, radius = 22f, textSize = 18f).apply { setOnClickListener { finish() } }
-        val title = Ui.text(c, 22f, bold = true).apply { text = getString(if (pick) R.string.pick_map_title else R.string.saved_maps) }
+        val title = Ui.text(c, 22f, bold = true).apply { text = getString(if (pick) R.string.pick_map_title else R.string.pcd_viewer) }
         val open = Ui.button(c, getString(R.string.open_file), Ui.ACCENT, radius = 22f, textSize = 13f).apply {
             setPadding(Ui.dpi(c, 14f), 0, Ui.dpi(c, 14f), 0)
             setOnClickListener {
@@ -138,10 +138,23 @@ class PcdListActivity : Activity() {
             isClickable = true
             setOnClickListener { openViewer(item.uri, item.name) }
             if (!pick) setOnLongClickListener {
-                confirmDelete(item)
+                showActions(item)
                 true
             }
         }
+    }
+
+    private fun showActions(item: Item) {
+        AlertDialog.Builder(this)
+            .setTitle(item.name)
+            .setItems(arrayOf(getString(R.string.share), getString(R.string.delete))) { _, which ->
+                if (which == 0) {
+                    PcdViewActivity.share(this, item.uri)
+                } else {
+                    confirmDelete(item)
+                }
+            }
+            .show()
     }
 
     private fun confirmDelete(item: Item) {
