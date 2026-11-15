@@ -24,4 +24,10 @@ object Settings {
     fun colorMode(c: Context): Int =
         if (prefs(c).getInt(KEY_COLOR, COLOR_INTENSITY) == COLOR_HEIGHT) COLOR_HEIGHT else COLOR_INTENSITY
     fun setColorMode(c: Context, mode: Int) = prefs(c).edit().putInt(KEY_COLOR, mode).apply()
+
+    /**
+     * Synthetic Mid-360 data instead of the real sensor (for trying the app without hardware).
+     * Kept in memory only: every launch starts with the real sensor.
+     */
+    @Volatile var demoMode = false
 }

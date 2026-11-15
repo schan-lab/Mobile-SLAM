@@ -7,7 +7,17 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.RippleDrawable
 import android.util.TypedValue
+import android.text.Editable
+import android.text.InputFilter
+import android.text.InputType
+import android.text.TextWatcher
+import android.text.method.DigitsKeyListener
 import android.view.Gravity
+import android.view.View
+import android.view.ViewGroup
+import android.widget.EditText
+import android.widget.FrameLayout
+import android.widget.LinearLayout
 import android.widget.TextView
 
 /** Small design system for the programmatic UI. */
@@ -62,5 +72,86 @@ object Ui {
 
     fun setButtonColor(v: TextView, color: Int, radius: Float = 28f) {
         v.background = RippleDrawable(ColorStateList.valueOf(0x40FFFFFF), rounded(color, dp(v.context, radius)), null)
+    }
+
+    /** "phone" / "tablet" (localised), for user-facing text. */
+    fun deviceName(c: Context): String =
+        c.getString(if (c.resources.configuration.smallestScreenWidthDp >= 600) R.string.device_tablet else R.string.device_phone)
+
+    /** Pads [v] by the system bars (edge-to-edge). */
+    fun padForSystemBars(v: View) {
+        v.setOnApplyWindowInsetsListener { view, insets ->
+            val bars = insets.getInsets(android.view.WindowInsets.Type.systemBars() or android.view.WindowInsets.Type.ime())
+            view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+            insets
+        }
+    }
+
+    /** Centres [content] horizontally, at most [maxDp] wide (large screens / landscape). */
+    fun capWidth(c: Context, content: View, maxDp: Float): View = MaxWidthFrame(c, dpi(c, maxDp)).apply {
+        addView(content, FrameLayout.LayoutParams(-1, -2, Gravity.CENTER_HORIZONTAL))
+    }
+
+    private class MaxWidthFrame(c: Context, private val maxPx: Int) : FrameLayout(c) {
+        override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+            val w = View.MeasureSpec.getSize(widthMeasureSpec)
+            val child = getChildAt(0)
+            (child?.layoutParams as? LayoutParams)?.width = if (w > maxPx) maxPx else ViewGroup.LayoutParams.MATCH_PARENT
+            super.onMeasure(widthMeasureSpec, heightMeasureSpec)
+        }
+    }
+
+    /** A card with a small section label on top; add content to the returned column. */
+    fun section(c: Context, title: String) = LinearLayout(c).apply {
+        val p = dpi(c, 14f)
+        orientation = LinearLayout.VERTICAL
+        background = card(c)
+        setPadding(p, p, p, p)
+        addView(text(c, 11f, TEXT_DIM, bold = true).apply { text = title },
+            LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dpi(c, 8f) })
+    }
+
+    /** Small explanatory text. */
+    fun note(c: Context, s: String, color: Int = TEXT_DIM) = text(c, 12f, color).apply { text = s }
+
+    /** IPv4 input: digits and dots; full-width input (e.g. a Japanese IME) is converted to ASCII. */
+    fun ipField(c: Context, onChange: (String) -> Unit) = EditText(c).apply {
+        hint = "0.0.0.0"
+        setHintTextColor(GREY)
+        setTextColor(TEXT)
+        textSize = 16f
+        typeface = Typeface.MONOSPACE
+        isSingleLine = true
+        // numeric keypad, but several dots allowed; pasted / IME full-width text is converted first
+        inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+        keyListener = DigitsKeyListener.getInstance("0123456789.")
+        filters = arrayOf(InputFilter { src, start, end, _, _, _ ->
+            val sub = src.subSequence(start, end).toString()
+            val n = Mid360Config.normalize(sub).filter { it.isDigit() && it < '\u0080' || it == '.' }
+            if (n == sub) null else n
+        })
+        background = rounded(0x0FFFFFFF, dp(c, 8f))
+        setPadding(dpi(c, 10f), 0, dpi(c, 10f), 0)
+        addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, d: Int) {}
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, d: Int) {}
+            override fun afterTextChanged(e: Editable) {
+                val n = Mid360Config.normalize(e.toString())
+                if (n != e.toString()) { e.replace(0, e.length, n); return }
+                setTextColor(if (Mid360Config.isValid(n)) TEXT else RED)
+                onChange(n)
+            }
+        })
+    }
+
+    /** Navigation row: bold label and a chevron. */
+    fun navRow(c: Context, label: String, onClick: () -> Unit) = LinearLayout(c).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        addView(text(c, 15f, bold = true).apply { text = label }, LinearLayout.LayoutParams(0, -2, 1f))
+        addView(text(c, 18f, TEXT_DIM).apply { text = "›" })
+        isClickable = true; isFocusable = true
+        setPadding(0, dpi(c, 4f), 0, dpi(c, 4f))
+        setOnClickListener { onClick() }
     }
 }

@@ -32,7 +32,7 @@ class PcdViewActivity : Activity() {
 
         val back = Ui.button(c, "←", Ui.GREY, radius = 20f, textSize = 18f).apply { setOnClickListener { finish() } }
         val title = Ui.text(c, 15f, bold = true).apply { text = name; isSingleLine = true }
-        info = Ui.text(c, 12f, Ui.TEXT_DIM).apply { text = "読み込み中…" }
+        info = Ui.text(c, 12f, Ui.TEXT_DIM).apply { text = getString(R.string.loading) }
         val texts = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; addView(title); addView(info) }
         val top = LinearLayout(c).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -43,20 +43,20 @@ class PcdViewActivity : Activity() {
             addView(texts, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = Ui.dpi(c, 12f) })
         }
 
-        val fit = Ui.button(c, "全体表示", Ui.GREY, textSize = 14f).apply { setOnClickListener { view.fit() } }
-        sizeBtn = Ui.button(c, "点サイズ ●", Ui.GREY, textSize = 14f).apply {
+        val fit = Ui.button(c, getString(R.string.fit), Ui.GREY, textSize = 14f).apply { setOnClickListener { view.fit() } }
+        sizeBtn = Ui.button(c, getString(R.string.point_size) + " ●", Ui.GREY, textSize = 14f).apply {
             setOnClickListener {
                 sizeIdx = (sizeIdx + 1) % sizes.size
                 view.pointSize = sizes[sizeIdx]; view.requestRender(); updateSizeLabel()
             }
         }
-        val share = Ui.button(c, "共有", Ui.ACCENT, textSize = 14f).apply {
+        val share = Ui.button(c, getString(R.string.share), Ui.ACCENT, textSize = 14f).apply {
             setOnClickListener {
                 startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
                     type = "application/octet-stream"
                     putExtra(Intent.EXTRA_STREAM, uri)
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                }, "PCDを共有"))
+                }, getString(R.string.share_pcd)))
             }
         }
         val h = Ui.dpi(c, 50f)
@@ -70,23 +70,20 @@ class PcdViewActivity : Activity() {
         }
         val hint = Ui.text(c, 11f, Ui.TEXT_DIM).apply {
             gravity = Gravity.CENTER
-            text = "1本指: 回転   2本指: 移動   ピンチ: ズーム   ダブルタップ: 全体表示"
+            text = getString(R.string.hint_viewer)
         }
         val bottom = LinearLayout(c).apply {
             orientation = LinearLayout.VERTICAL
             addView(hint, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = Ui.dpi(c, 6f) })
             addView(controls)
         }
+        // same arrangement as the main screen: stacked in portrait, side by side in landscape
+        val overlay = OverlayLayout(c, top, bottom)
         val root = FrameLayout(c).apply {
             setBackgroundColor(Ui.BG)
             addView(view, FrameLayout.LayoutParams(-1, -1))
-            addView(top, FrameLayout.LayoutParams(-1, -2, Gravity.TOP).apply { setMargins(pad, pad, pad, 0) })
-            addView(bottom, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM).apply { setMargins(pad, 0, pad, pad) })
-            setOnApplyWindowInsetsListener { v, insets ->
-                val bars = insets.getInsets(android.view.WindowInsets.Type.systemBars())
-                v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
-                insets
-            }
+            addView(overlay, FrameLayout.LayoutParams(-1, -1).apply { setMargins(pad, pad, pad, pad) })
+            Ui.padForSystemBars(this)
         }
         setContentView(root)
         updateSizeLabel()
@@ -99,11 +96,10 @@ class PcdViewActivity : Activity() {
                 result.onSuccess { d ->
                     view.setData(d)
                     val sx = d.max[0] - d.min[0]; val sy = d.max[1] - d.min[1]; val sz = d.max[2] - d.min[2]
-                    val sub = if (d.n < d.totalPoints) "（%,d点を表示）".format(d.n) else ""
-                    info.text = "%,d点%s   %.1f × %.1f × %.1f m   %s   %dms".format(
-                        d.totalPoints, sub, sx, sy, sz, d.format, ms)
+                    val sub = if (d.n < d.totalPoints) getString(R.string.viewer_shown, "%,d".format(d.n)) else ""
+                    info.text = getString(R.string.viewer_info, "%,d".format(d.totalPoints), sub, sx, sy, sz, d.format, ms.toInt())
                 }.onFailure { e ->
-                    info.text = "読み込み失敗: ${e.message}"
+                    info.text = getString(R.string.load_failed, e.message ?: "")
                     info.setTextColor(Ui.RED)
                 }
             }
@@ -111,7 +107,7 @@ class PcdViewActivity : Activity() {
     }
 
     private fun updateSizeLabel() {
-        sizeBtn.text = "点サイズ " + "●".repeat(sizeIdx + 1)
+        sizeBtn.text = getString(R.string.point_size) + " " + "●".repeat(sizeIdx + 1)
     }
 
     override fun onResume() {

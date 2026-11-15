@@ -19,16 +19,24 @@ import java.util.concurrent.atomic.AtomicLong
  * Receives Livox Mid-360 point cloud / IMU over the Ethernet network only.
  * Sockets are bound to the Ethernet [Network] so traffic never goes via Wi-Fi/LTE/VPN.
  */
-class LidarReceiver(context: Context, val points: PointBuffer) {
+class LidarReceiver(private val context: Context, val points: PointBuffer) {
 
-    companion object { const val TAG = "Mid360" }
+    companion object {
+        const val TAG = "Mid360"
+        /** Last LiDAR IP seen (point packets or discovery), shared with the Mid-360 network screen. */
+        @Volatile var lastLidarIp: String = ""
+    }
 
     private val cm = context.getSystemService(ConnectivityManager::class.java)
 
     // ---- status (read from UI thread) ----
-    @Volatile var ethState: String = "Ethernet待機中…"
+    @Volatile var ethState: String = context.getString(R.string.eth_waiting)
     @Volatile var ethAddrs: String = "-"
-    @Volatile var lidarInfo: String = "未検出"
+    /** IPv4 address / prefix length of the Ethernet interface. */
+    @Volatile var ethIPv4: List<Pair<String, Int>> = emptyList()
+    /** Directed broadcast addresses of the Ethernet interface (for LiDAR discovery). */
+    @Volatile private var ethBroadcasts: List<String> = emptyList()
+    @Volatile var lidarInfo: String = context.getString(R.string.not_detected)
     @Volatile var lidarSrc: String = "-"
     @Volatile var dataType: Int = -1
     @Volatile var lastImu: FloatArray? = null
@@ -70,13 +78,16 @@ class LidarReceiver(context: Context, val points: PointBuffer) {
             synchronized(this@LidarReceiver) {
                 if (network != null) return
                 network = n
-                ethState = "Ethernet接続"
+                ethState = context.getString(R.string.eth_connected)
                 openSockets(n)
             }
         }
 
         override fun onLinkPropertiesChanged(n: Network, lp: LinkProperties) {
             ethAddrs = "${lp.interfaceName}: " + lp.linkAddresses.joinToString { it.toString() }
+            val v4 = lp.linkAddresses.filter { it.address is java.net.Inet4Address }
+            ethIPv4 = v4.map { (it.address.hostAddress ?: "") to it.prefixLength }
+            ethBroadcasts = ethIPv4.mapNotNull { (ip, prefix) -> Mid360Config.broadcast(ip, prefix) }
             Log.i(TAG, "Link: $ethAddrs")
         }
 
@@ -86,8 +97,10 @@ class LidarReceiver(context: Context, val points: PointBuffer) {
                 if (n != network) return
                 closeSockets()
                 network = null
-                ethState = "Ethernet切断"
+                ethState = context.getString(R.string.eth_lost)
                 ethAddrs = "-"
+                ethIPv4 = emptyList()
+                ethBroadcasts = emptyList()
             }
         }
     }
@@ -106,6 +119,32 @@ class LidarReceiver(context: Context, val points: PointBuffer) {
         synchronized(this) { closeSockets(); network = null }
     }
 
+    // --------------------------------------------------------------- demo
+
+    private var demo: DemoSource? = null
+    /** True while synthetic Mid-360 packets are being fed in. */
+    val demoRunning get() = demo != null
+
+    /** Feeds synthetic packets of a simulated room through the same path as real UDP packets. */
+    fun startDemo() {
+        if (demo != null) return
+        lastUdpCnt = -1
+        lidarInfo = context.getString(R.string.demo_lidar_info)
+        demo = DemoSource { type, buf, len -> if (type == 1) onPoint(buf, len, null) else onImu(buf, len) }.also { it.start() }
+    }
+
+    fun stopDemo() {
+        val d = demo ?: return
+        d.stop()   // joins the thread: no callbacks after this
+        demo = null
+        lidarInfo = context.getString(R.string.not_detected)
+        lidarSrc = "-"
+        lastUdpCnt = -1
+    }
+
+    /** The simulated sensor stands still for 3 s (IMU initialisation), then moves again. */
+    fun restartDemoMotion() { demo?.restartMotion() }
+
     // ---------------------------------------------------------------
 
     private fun openSocket(n: Network, port: Int): DatagramSocket {
@@ -119,7 +158,7 @@ class LidarReceiver(context: Context, val points: PointBuffer) {
             // e.g. EPERM when an always-routing VPN (no bypass) covers this app.
             // Receiving still works unbound: packets to eth0's address are delivered locally.
             Log.w(TAG, "bindSocket($port) failed, using unbound socket: ${e.message}")
-            bindNote = " (VPN有効のため非バインド受信)"
+            bindNote = context.getString(R.string.vpn_unbound)
         }
         sockets += s
         return s
@@ -141,7 +180,7 @@ class LidarReceiver(context: Context, val points: PointBuffer) {
             Log.i(TAG, "sockets open")
         } catch (e: Exception) {
             Log.e(TAG, "socket open failed", e)
-            ethState = "ソケット作成失敗: ${e.message}"
+            ethState = context.getString(R.string.socket_failed, e.message ?: "")
         }
     }
 
@@ -170,12 +209,16 @@ class LidarReceiver(context: Context, val points: PointBuffer) {
         }
     }, "mid360-$name").apply { isDaemon = true; start() }
 
-    /** Periodically broadcast a discovery request so we can show the LiDAR's SN/IP. */
+    /**
+     * Periodically sends a discovery request so we can show the LiDAR's SN/IP: broadcast on the Ethernet
+     * interface's own subnet (no fixed 192.168.1.x), and directly to the sender once points arrive.
+     */
     private fun detectLoop(s: DatagramSocket) {
         var seq = 0
-        val targets = listOf("255.255.255.255", "192.168.1.255")
         while (running && !s.isClosed) {
             val req = Livox.buildDetectRequest(seq++)
+            val targets = (listOf("255.255.255.255") + ethBroadcasts +
+                listOf(lidarSrc).filter { it != "-" && it != "127.0.0.1" }).distinct()
             for (t in targets) {
                 runCatching {
                     s.send(DatagramPacket(req, req.size, InetAddress.getByName(t), Livox.LIDAR_DETECT_PORT))
@@ -190,9 +233,10 @@ class LidarReceiver(context: Context, val points: PointBuffer) {
         val info = "${Livox.devTypeName(ack.devType)} SN=${ack.sn} IP=${ack.ip}"
         if (info != lidarInfo) Log.i(TAG, "detected: $info (from ${pkt.address})")
         lidarInfo = info
+        lastLidarIp = ack.ip
     }
 
-    private fun onPoint(buf: ByteArray, len: Int, pkt: DatagramPacket) {
+    private fun onPoint(buf: ByteArray, len: Int, pkt: DatagramPacket?) {
         if (len < Livox.HEADER_SIZE) return
         record(1, buf, len)
         val b = ByteBuffer.wrap(buf, 0, len).order(ByteOrder.LITTLE_ENDIAN)
@@ -207,7 +251,11 @@ class LidarReceiver(context: Context, val points: PointBuffer) {
         lastUdpCnt = udpCnt
         pointPackets.incrementAndGet()
         dataType = type
-        lidarSrc = pkt.address?.hostAddress ?: "-"
+        val src = pkt?.address?.hostAddress ?: "127.0.0.1"
+        if (src != lidarSrc) {
+            lidarSrc = src
+            if (pkt != null) lastLidarIp = src
+        }
 
         var off = Livox.HEADER_SIZE
         var n = 0

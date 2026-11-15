@@ -34,8 +34,8 @@ class PcdListActivity : Activity() {
         val pad = Ui.dpi(c, 16f)
 
         val back = Ui.button(c, "←", Ui.GREY, radius = 22f, textSize = 18f).apply { setOnClickListener { finish() } }
-        val title = Ui.text(c, 22f, bold = true).apply { text = if (pick) "使うマップを選択" else "保存済みマップ" }
-        val open = Ui.button(c, "ファイルを開く", Ui.ACCENT, radius = 22f, textSize = 13f).apply {
+        val title = Ui.text(c, 22f, bold = true).apply { text = getString(if (pick) R.string.pick_map_title else R.string.saved_maps) }
+        val open = Ui.button(c, getString(R.string.open_file), Ui.ACCENT, radius = 22f, textSize = 13f).apply {
             setPadding(Ui.dpi(c, 14f), 0, Ui.dpi(c, 14f), 0)
             setOnClickListener {
                 startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
@@ -51,12 +51,12 @@ class PcdListActivity : Activity() {
             addView(open, LinearLayout.LayoutParams(-2, Ui.dpi(c, 44f)))
         }
         val sub = Ui.text(c, 12f, Ui.TEXT_DIM).apply {
-            text = if (pick) "Download/MobileNDT   タップで選択" else "Download/MobileNDT   タップで表示・長押しで削除"
+            text = getString(if (pick) R.string.list_sub_pick else R.string.list_sub)
         }
         list = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL }
         empty = Ui.text(c, 14f, Ui.TEXT_DIM).apply {
             gravity = Gravity.CENTER
-            text = "まだ保存されたマップがありません。\nマップ作成後に「PCD保存」を押してください。"
+            text = getString(R.string.list_empty)
             setPadding(0, Ui.dpi(c, 48f), 0, 0)
         }
         val content = LinearLayout(c).apply {
@@ -70,12 +70,8 @@ class PcdListActivity : Activity() {
         val root = ScrollView(c).apply {
             setBackgroundColor(Ui.BG)
             isFillViewport = true
-            addView(content)
-            setOnApplyWindowInsetsListener { v, insets ->
-                val bars = insets.getInsets(android.view.WindowInsets.Type.systemBars())
-                v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
-                insets
-            }
+            addView(Ui.capWidth(c, content, 700f))
+            Ui.padForSystemBars(this)
         }
         setContentView(root)
     }
@@ -106,7 +102,7 @@ class PcdListActivity : Activity() {
         val items = try { query() } catch (e: Exception) { emptyList() }
         list.removeAllViews()
         empty.visibility = if (items.isEmpty()) View.VISIBLE else View.GONE
-        val fmt = SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.JAPAN)
+        val fmt = SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.US)
         for (it in items) list.addView(row(it, fmt), LinearLayout.LayoutParams(-1, -2).apply {
             bottomMargin = Ui.dpi(this@PcdListActivity, 10f)
         })
@@ -120,7 +116,7 @@ class PcdListActivity : Activity() {
         }
         val name = Ui.text(c, 15f, bold = true).apply { text = item.name; isSingleLine = true }
         val meta = Ui.text(c, 12f, Ui.TEXT_DIM).apply {
-            text = "%s   %.1f MB   約%,d点".format(fmt.format(Date(item.modified)), item.size / 1e6, item.size / 12)
+            text = getString(R.string.list_meta, fmt.format(Date(item.modified)), item.size / 1e6, "%,d".format(item.size / 12))
         }
         val texts = LinearLayout(c).apply {
             orientation = LinearLayout.VERTICAL
@@ -141,12 +137,12 @@ class PcdListActivity : Activity() {
 
     private fun confirmDelete(item: Item) {
         AlertDialog.Builder(this)
-            .setTitle("削除しますか？")
+            .setTitle(R.string.delete_title)
             .setMessage(item.name)
-            .setNegativeButton("キャンセル", null)
-            .setPositiveButton("削除") { _, _ ->
+            .setNegativeButton(R.string.cancel, null)
+            .setPositiveButton(R.string.delete) { _, _ ->
                 val ok = try { contentResolver.delete(item.uri, null, null) > 0 } catch (e: Exception) { false }
-                Toast.makeText(this, if (ok) "削除しました" else "削除できませんでした", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, if (ok) R.string.deleted else R.string.delete_failed, Toast.LENGTH_SHORT).show()
                 refresh()
             }
             .show()
