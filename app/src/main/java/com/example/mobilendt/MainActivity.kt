@@ -70,6 +70,8 @@ class MainActivity : Activity() {
         slam = SlamNative()
         receiver = LidarReceiver(this, points)
         receiver.packetSink = { type, buf, len -> slam.push(type, buf, len) }
+        // test hook: adb shell am start -n com.example.mobilendt/.MainActivity --ez demo true
+        if (intent.getBooleanExtra("demo", false)) Settings.demoMode = true
 
         setContentView(buildUi())
     }
@@ -96,11 +98,11 @@ class MainActivity : Activity() {
             setPadding(Ui.dpi(c, 10f), Ui.dpi(c, 3f), Ui.dpi(c, 10f), Ui.dpi(c, 3f))
         }
         headline = Ui.text(c, 15f, bold = true)
-        val viewerBtn = Ui.button(c, "保存済みマップ", Ui.GREY, radius = 16f, textSize = 12f).apply {
+        val viewerBtn = Ui.button(c, getString(R.string.saved_maps), Ui.GREY, radius = 16f, textSize = 12f).apply {
             setPadding(Ui.dpi(c, 12f), 0, Ui.dpi(c, 12f), 0)
             setOnClickListener { startActivity(android.content.Intent(c, PcdListActivity::class.java)) }
         }
-        val settingsBtn = Ui.button(c, "設定", Ui.GREY, radius = 16f, textSize = 12f).apply {
+        val settingsBtn = Ui.button(c, getString(R.string.settings), Ui.GREY, radius = 16f, textSize = 12f).apply {
             setPadding(Ui.dpi(c, 12f), 0, Ui.dpi(c, 12f), 0)
             setOnClickListener { startActivity(android.content.Intent(c, SettingsActivity::class.java)) }
         }
@@ -116,7 +118,7 @@ class MainActivity : Activity() {
             typeface = Typeface.MONOSPACE
             visibility = View.GONE
         }
-        val card = LinearLayout(c).apply {
+        val cardBody = LinearLayout(c).apply {
             orientation = LinearLayout.VERTICAL
             background = Ui.card(c)
             setPadding(pad, pad, pad, pad)
@@ -128,11 +130,17 @@ class MainActivity : Activity() {
                 details.visibility = if (showDetails) View.VISIBLE else View.GONE
             }
         }
+        // scrolls only when the details make it taller than the space it gets (landscape / small screens)
+        val card = android.widget.ScrollView(c).apply {
+            isVerticalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_NEVER
+            addView(cardBody)
+        }
 
         // --- bottom controls ---
-        recBtn = Ui.button(c, "● 記録", Ui.GREY, textSize = 14f).apply { setOnClickListener { toggleRecord() } }
-        mainBtn = Ui.button(c, "▶  マップ作成 開始", Ui.ACCENT, textSize = 17f).apply { setOnClickListener { toggleMapping() } }
-        saveBtn = Ui.button(c, "PCD保存", Ui.GREY, textSize = 14f).apply {
+        recBtn = Ui.button(c, getString(R.string.record), Ui.GREY, textSize = 14f).apply { setOnClickListener { toggleRecord() } }
+        mainBtn = Ui.button(c, getString(R.string.start_mapping), Ui.ACCENT, textSize = 17f).apply { setOnClickListener { toggleMapping() } }
+        saveBtn = Ui.button(c, getString(R.string.save_pcd), Ui.GREY, textSize = 14f).apply {
             setOnClickListener { savePcd() }
             alpha = 0.4f
             isEnabled = false
@@ -152,10 +160,10 @@ class MainActivity : Activity() {
         }
         hint = Ui.text(c, 11f, Ui.TEXT_DIM).apply {
             gravity = Gravity.CENTER
-            text = "1本指: 回転   2本指: 移動   ピンチ: ズーム   ダブルタップ: 追従"
+            text = getString(R.string.hint_view)
         }
-        modeMapBtn = Ui.button(c, "マップ作成", Ui.ACCENT, radius = 18f, textSize = 13f).apply { setOnClickListener { switchMode(0) } }
-        modeLocBtn = Ui.button(c, "自己位置推定", Ui.GREY, radius = 18f, textSize = 13f).apply { setOnClickListener { switchMode(1) } }
+        modeMapBtn = Ui.button(c, getString(R.string.mode_mapping), Ui.ACCENT, radius = 18f, textSize = 13f).apply { setOnClickListener { switchMode(0) } }
+        modeLocBtn = Ui.button(c, getString(R.string.mode_loc), Ui.GREY, radius = 18f, textSize = 13f).apply { setOnClickListener { switchMode(1) } }
         val modeRow = LinearLayout(c).apply {
             orientation = LinearLayout.HORIZONTAL
             background = Ui.card(c)
@@ -163,13 +171,13 @@ class MainActivity : Activity() {
             addView(modeMapBtn, LinearLayout.LayoutParams(0, Ui.dpi(c, 38f), 1f))
             addView(modeLocBtn, LinearLayout.LayoutParams(0, Ui.dpi(c, 38f), 1f).apply { marginStart = Ui.dpi(c, 6f) })
         }
-        mapPickBtn = Ui.button(c, "マップを選択", Ui.GREY, radius = 18f, textSize = 13f).apply {
+        mapPickBtn = Ui.button(c, getString(R.string.choose_map), Ui.GREY, radius = 18f, textSize = 13f).apply {
             isSingleLine = true
             ellipsize = android.text.TextUtils.TruncateAt.MIDDLE
             setPadding(Ui.dpi(c, 10f), 0, Ui.dpi(c, 10f), 0)
             setOnClickListener { pickMap() }
         }
-        initBtn = Ui.button(c, "初期位置を指定", Ui.GREY, radius = 18f, textSize = 13f).apply { setOnClickListener { togglePickPose() } }
+        initBtn = Ui.button(c, getString(R.string.set_start), Ui.GREY, radius = 18f, textSize = 13f).apply { setOnClickListener { togglePickPose() } }
         locRow = LinearLayout(c).apply {
             orientation = LinearLayout.HORIZONTAL
             visibility = View.GONE
@@ -185,16 +193,12 @@ class MainActivity : Activity() {
             addView(controls, LinearLayout.LayoutParams(-1, -2))
         }
 
+        val overlay = OverlayLayout(c, card, bottom)
         val root = FrameLayout(c).apply {
             setBackgroundColor(Ui.BG)
             addView(mapView, FrameLayout.LayoutParams(-1, -1))
-            addView(card, FrameLayout.LayoutParams(-1, -2, Gravity.TOP).apply { setMargins(pad, pad, pad, 0) })
-            addView(bottom, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM).apply { setMargins(pad, 0, pad, pad) })
-            setOnApplyWindowInsetsListener { v, insets ->
-                val bars = insets.getInsets(android.view.WindowInsets.Type.systemBars())
-                v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
-                insets
-            }
+            addView(overlay, FrameLayout.LayoutParams(-1, -1).apply { setMargins(pad, pad, pad, pad) })
+            Ui.padForSystemBars(this)
         }
         updatePhase()
         return root
@@ -212,6 +216,7 @@ class MainActivity : Activity() {
                 return
             }
             if (mapView.pickMode) togglePickPose()
+            receiver.restartDemoMotion()   // demo: stand still for the IMU initialisation
             slam.start(mode)
             mapStartMs = System.currentTimeMillis()
         } else {
@@ -225,7 +230,7 @@ class MainActivity : Activity() {
         if (m == mode) return
         slam.status(st)
         if (mapping()) {
-            Toast.makeText(this, "停止してから切り替えてください", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, R.string.stop_to_switch, Toast.LENGTH_SHORT).show()
             return
         }
         val apply = {
@@ -238,10 +243,10 @@ class MainActivity : Activity() {
         }
         if (mode == 0 && st[SlamNative.S.VIS_SIZE] > 0) {
             android.app.AlertDialog.Builder(this)
-                .setTitle("自己位置推定に切り替え")
-                .setMessage("作成中のマップは表示から消えます。必要なら先に「PCD保存」してください。")
-                .setNegativeButton("キャンセル", null)
-                .setPositiveButton("切り替える") { _, _ -> apply() }
+                .setTitle(R.string.switch_to_loc_title)
+                .setMessage(R.string.switch_to_loc_msg)
+                .setNegativeButton(R.string.cancel, null)
+                .setPositiveButton(R.string.switch_) { _, _ -> apply() }
                 .show()
         } else apply()
     }
@@ -251,14 +256,13 @@ class MainActivity : Activity() {
         Ui.setButtonColor(modeLocBtn, if (mode == 1) Ui.ACCENT else Ui.GREY, 18f)
         locRow.visibility = if (mode == 1) View.VISIBLE else View.GONE
         mapPickBtn.text = when {
-            loadingMap -> "読み込み中…"
+            loadingMap -> getString(R.string.loading)
             mapName != null -> "🗺 $mapName"
-            else -> "マップを選択"
+            else -> getString(R.string.choose_map)
         }
         Ui.setButtonColor(initBtn, if (mapView.pickMode) Ui.ORANGE else Ui.GREY, 18f)
-        initBtn.text = if (mapView.pickMode) "指定をやめる" else "初期位置を指定"
-        hint.text = if (mapView.pickMode) "地図をタッチ: 位置   そのままドラッグ: 向き   (2本指: 移動 / ピンチ: ズーム)"
-                    else "1本指: 回転   2本指: 移動   ピンチ: ズーム   ダブルタップ: 追従"
+        initBtn.text = getString(if (mapView.pickMode) R.string.cancel_pick else R.string.set_start)
+        hint.text = getString(if (mapView.pickMode) R.string.hint_pick else R.string.hint_view)
         hint.setTextColor(if (mapView.pickMode) Ui.ORANGE else Ui.TEXT_DIM)
         updatePhase()
     }
@@ -267,7 +271,7 @@ class MainActivity : Activity() {
         if (loadingMap) return
         slam.status(st)
         if (mapping()) {
-            Toast.makeText(this, "停止してからマップを選んでください", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, R.string.stop_to_pick, Toast.LENGTH_SHORT).show()
             return
         }
         @Suppress("DEPRECATION")
@@ -287,17 +291,17 @@ class MainActivity : Activity() {
         kotlin.concurrent.thread(name = "prior-map") {
             val r = runCatching {
                 val d = contentResolver.openInputStream(uri)!!.use { PcdFile.read(it) }
-                require(d.n > 100) { "点が少なすぎます (${d.n}点)" }
-                check(slam.setPriorMap(d.xyz, d.inten, d.n)) { "NDTマップを作れませんでした" }
+                require(d.n > 100) { getString(R.string.too_few_points, d.n) }
+                check(slam.setPriorMap(d.xyz, d.inten, d.n)) { getString(R.string.ndt_failed) }
                 d.n
             }
             runOnUiThread {
                 loadingMap = false
                 r.onSuccess { n ->
                     mapName = name
-                    Toast.makeText(this, "マップ読み込み: %,d点".format(n), Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, getString(R.string.map_loaded, "%,d".format(n)), Toast.LENGTH_SHORT).show()
                 }.onFailure { e ->
-                    Toast.makeText(this, "マップ読み込み失敗: ${e.message}", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this, getString(R.string.map_load_failed, e.message ?: ""), Toast.LENGTH_LONG).show()
                 }
                 updateModeUi()
             }
@@ -321,8 +325,8 @@ class MainActivity : Activity() {
         mapView.pickMode = false
         mapView.pitch = 70f
         updateModeUi()
-        val msg = if (hasYaw) "初期位置 (%.2f, %.2f)  向き %.0f°".format(x, y, Math.toDegrees(yaw.toDouble()))
-                  else "初期位置 (%.2f, %.2f)  向きは自動で探索".format(x, y)
+        val msg = if (hasYaw) getString(R.string.initial_pose_yaw, x, y, Math.toDegrees(yaw.toDouble()))
+                  else getString(R.string.initial_pose_auto, x, y)
         Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
     }
 
@@ -331,7 +335,7 @@ class MainActivity : Activity() {
         val name = "map_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date()) + ".pcd"
         val tmp = File(cacheDir, name)
         val msg = try {
-            check(slam.savePcd(tmp.absolutePath)) { "PCD書き出し失敗" }
+            check(slam.savePcd(tmp.absolutePath)) { getString(R.string.pcd_write_failed) }
             val values = ContentValues().apply {
                 put(MediaStore.MediaColumns.DISPLAY_NAME, name)
                 put(MediaStore.MediaColumns.MIME_TYPE, "application/octet-stream")
@@ -339,14 +343,14 @@ class MainActivity : Activity() {
                 put(MediaStore.MediaColumns.IS_PENDING, 1)
             }
             val uri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
-                ?: error("MediaStore登録失敗")
+                ?: error(getString(R.string.mediastore_failed))
             contentResolver.openOutputStream(uri)!!.use { out -> tmp.inputStream().use { it.copyTo(out) } }
             values.clear()
             values.put(MediaStore.MediaColumns.IS_PENDING, 0)
             contentResolver.update(uri, values, null, null)
-            "保存しました: Download/MobileNDT/$name"
+            getString(R.string.saved_to, "Download/MobileNDT/$name")
         } catch (e: Exception) {
-            "保存失敗: ${e.message}"
+            getString(R.string.save_failed, e.message ?: "")
         } finally {
             tmp.delete()
         }
@@ -360,7 +364,12 @@ class MainActivity : Activity() {
             val name = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
             val f = File(getExternalFilesDir(null), "raw_$name.livox")
             receiver.recordedBytes.set(0)
-            receiver.recorder = BufferedOutputStream(FileOutputStream(f), 1 shl 20)
+            receiver.recorder = try {
+                BufferedOutputStream(FileOutputStream(f), 1 shl 20)
+            } catch (e: Exception) {
+                Toast.makeText(this, getString(R.string.record_failed, e.message ?: ""), Toast.LENGTH_LONG).show()
+                return
+            }
             recFile = f
             Ui.setButtonColor(recBtn, Ui.RED)
         } else {
@@ -369,9 +378,9 @@ class MainActivity : Activity() {
                 cur.flush()
                 cur.close()
             }
-            recBtn.text = "● 記録"
+            recBtn.text = getString(R.string.record)
             Ui.setButtonColor(recBtn, Ui.GREY)
-            Toast.makeText(this, "生データ保存: ${recFile?.name}", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, getString(R.string.raw_saved, recFile?.name ?: ""), Toast.LENGTH_LONG).show()
             Log.i(LidarReceiver.TAG, "record saved: ${recFile?.absolutePath}")
         }
     }
@@ -388,6 +397,7 @@ class MainActivity : Activity() {
         super.onStart()
         applySettings()
         receiver.start()
+        if (Settings.demoMode) receiver.startDemo()
         mapView.onResume()
         prevT = System.nanoTime()
         ui.post(refresh)
@@ -399,6 +409,7 @@ class MainActivity : Activity() {
         slam.status(st)
         if (mapping()) slam.stop()   // map is kept; only start() resets
         mapView.onPause()
+        receiver.stopDemo()
         receiver.stop()
         slam.status(st)
         updatePhase()
@@ -424,17 +435,17 @@ class MainActivity : Activity() {
         val running = mapping()
         val loc = st[SlamNative.S.LOC_STATE].toInt()
         val (label, color) = when {
-            !running && st[SlamNative.S.SCANS] > 0 -> "停止中" to Ui.ACCENT
-            !running -> (if (mode == 1) "自己位置推定" else "ライブ") to Ui.GREY
-            st[SlamNative.S.STATUS].toInt() != 2 -> "初期化中" to Ui.ORANGE
-            mode == 0 -> "マップ作成中" to Ui.GREEN
-            loc == 2 -> "追跡中" to Ui.GREEN
-            loc == 3 -> "ロスト" to Ui.RED
-            else -> "探索中" to Ui.ORANGE
+            !running && st[SlamNative.S.SCANS] > 0 -> R.string.phase_stopped to Ui.ACCENT
+            !running -> (if (mode == 1) R.string.mode_loc else R.string.phase_live) to Ui.GREY
+            st[SlamNative.S.STATUS].toInt() != 2 -> R.string.phase_init to Ui.ORANGE
+            mode == 0 -> R.string.phase_mapping to Ui.GREEN
+            loc == 2 -> R.string.phase_tracking to Ui.GREEN
+            loc == 3 -> R.string.phase_lost to Ui.RED
+            else -> R.string.phase_search to Ui.ORANGE
         }
-        phase.text = label
+        phase.text = getString(label)
         phase.background = Ui.rounded(color, Ui.dp(this, 10f))
-        mainBtn.text = if (running) "■  停止" else if (mode == 1) "▶  自己位置推定 開始" else "▶  マップ作成 開始"
+        mainBtn.text = getString(if (running) R.string.stop else if (mode == 1) R.string.start_loc else R.string.start_mapping)
         Ui.setButtonColor(mainBtn, if (running) Ui.RED else Ui.ACCENT)
         val canSave = mode == 0 && !running && st[SlamNative.S.VIS_SIZE] > 0
         saveBtn.isEnabled = canSave
@@ -458,35 +469,39 @@ class MainActivity : Activity() {
         slam.status(st)
 
         val ethUp = receiver.ethAddrs != "-"
-        Ui.setChip(chipEth, ethUp, if (ethUp) "Ethernet" else "Ethernet 未接続")
-        Ui.setChip(chipLidar, pps > 100, if (pps > 100) "Mid-360  %.0fk点/s".format(ptps / 1000) else "LiDAR 受信なし")
+        Ui.setChip(chipEth, ethUp, if (ethUp) "Ethernet" else getString(R.string.eth_none))
+        val lidarName = if (receiver.demoRunning) getString(R.string.demo) else "Mid-360"
+        Ui.setChip(chipLidar, pps > 100,
+            if (pps > 100) getString(R.string.lidar_rate, lidarName, ptps / 1000) else getString(R.string.lidar_none))
         Ui.setChip(chipImu, ips > 50, "IMU %.0fHz".format(ips))
         updatePhase()
 
         val status = st[SlamNative.S.STATUS].toInt()
         val loc = st[SlamNative.S.LOC_STATE].toInt()
         headline.text = when {
-            mapping() && status != 2 -> "静止してください…"
+            mapping() && status != 2 -> getString(R.string.hold_still)
             mode == 1 && mapping() -> when (loc) {
-                2 -> "一致 %.0f%%  (%.2f, %.2f)  %.0f°".format(st[SlamNative.S.MATCH] * 100,
+                2 -> getString(R.string.loc_match, st[SlamNative.S.MATCH] * 100,
                     st[SlamNative.S.PX], st[SlamNative.S.PY], Math.toDegrees(st[SlamNative.S.YAW]))
-                3 -> "見失いました。再探索中…"
-                else -> "マップと照合中…"
+                3 -> getString(R.string.loc_lost)
+                else -> getString(R.string.loc_matching)
             }
-            mode == 1 -> if (st[SlamNative.S.HAS_PRIOR] > 0.5) "開始できます（初期位置の指定は任意）" else "マップを選択してください"
+            mode == 1 -> getString(if (st[SlamNative.S.HAS_PRIOR] > 0.5) R.string.loc_ready else R.string.loc_choose)
             mapping() -> {
-                val sec = (System.currentTimeMillis() - mapStartMs) / 1000
-                "%d:%02d   %,d点".format(sec / 60, sec % 60, st[SlamNative.S.VIS_SIZE].toLong())
+                val sec = ((System.currentTimeMillis() - mapStartMs) / 1000).toInt()
+                getString(R.string.mapping_progress, sec / 60, sec % 60, "%,d".format(st[SlamNative.S.VIS_SIZE].toLong()))
             }
-            st[SlamNative.S.SCANS] > 0 -> "%,d点  PCD保存できます".format(st[SlamNative.S.VIS_SIZE].toLong())
-            else -> "待機中"
+            st[SlamNative.S.SCANS] > 0 -> getString(R.string.can_save, "%,d".format(st[SlamNative.S.VIS_SIZE].toLong()))
+            receiver.demoRunning -> getString(R.string.demo_press_start)
+            pps <= 100 -> getString(R.string.waiting_lidar)
+            else -> getString(R.string.waiting)
         }
-        receiver.recorder?.let { recBtn.text = "■ %.0fMB".format(receiver.recordedBytes.get() / 1e6) }
+        receiver.recorder?.let { recBtn.text = getString(R.string.record_size, receiver.recordedBytes.get() / 1e6) }
 
         details.text = buildString {
             appendLine("${receiver.ethState}${receiver.bindNote}")
             appendLine(receiver.ethAddrs)
-            appendLine("LiDAR ${receiver.lidarInfo}")
+            appendLine("LiDAR ${receiver.lidarInfo}  from ${receiver.lidarSrc}")
             appendLine("pkt %.0f/s  pts %.0f/s  lost %d".format(pps, ptps, receiver.lostPackets.get()))
             if (mode == 1) appendLine("NDT %.1f ms  match %.2f  state %d".format(
                 st[SlamNative.S.NDT_MS], st[SlamNative.S.MATCH], st[SlamNative.S.LOC_STATE].toInt()))

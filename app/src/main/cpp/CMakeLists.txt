@@ -8,6 +8,7 @@ set(ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../../../..)
 
 add_library(mobilendt SHARED
     slam_jni.cpp
+    demo_jni.cpp
     ${ROOT}/core/lio.cpp
     ${ROOT}/core/ndt.cpp)
 
