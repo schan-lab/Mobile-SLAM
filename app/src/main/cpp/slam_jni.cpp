@@ -2,6 +2,7 @@
 #include <android/log.h>
 #include <jni.h>
 
+#include <algorithm>
 #include <atomic>
 #include <condition_variable>
 #include <deque>
@@ -214,18 +215,16 @@ JNIEXPORT jint JNICALL Java_com_example_mobilendt_SlamNative_map(JNIEnv* env, jc
 
 JNIEXPORT jint JNICALL Java_com_example_mobilendt_SlamNative_trajectory(JNIEnv* env, jclass, jlong h,
                                                                         jfloatArray out, jint maxPts) {
-    auto tr = E(h)->lio.trajectory();
-    size_t n = tr.size();
-    size_t start = n > size_t(maxPts) ? n - maxPts : 0;
+    auto tr = E(h)->lio.trajectory(size_t(std::max(maxPts, 0)));
     std::vector<float> tmp;
-    tmp.reserve((n - start) * 3);
-    for (size_t i = start; i < n; ++i) {
-        tmp.push_back(tr[i].x());
-        tmp.push_back(tr[i].y());
-        tmp.push_back(tr[i].z());
+    tmp.reserve(tr.size() * 3);
+    for (const auto& p : tr) {
+        tmp.push_back(p.x());
+        tmp.push_back(p.y());
+        tmp.push_back(p.z());
     }
     env->SetFloatArrayRegion(out, 0, static_cast<jsize>(tmp.size()), tmp.data());
-    return static_cast<jint>(n - start);
+    return static_cast<jint>(tr.size());
 }
 
 JNIEXPORT jint JNICALL Java_com_example_mobilendt_SlamNative_scan(JNIEnv* env, jclass, jlong h, jfloatArray out,
