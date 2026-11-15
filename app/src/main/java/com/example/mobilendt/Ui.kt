@@ -81,8 +81,15 @@ object Ui {
     /** Pads [v] by the system bars (edge-to-edge). */
     fun padForSystemBars(v: View) {
         v.setOnApplyWindowInsetsListener { view, insets ->
-            val bars = insets.getInsets(android.view.WindowInsets.Type.systemBars() or android.view.WindowInsets.Type.ime())
-            view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+            if (android.os.Build.VERSION.SDK_INT >= 30) {
+                val bars = insets.getInsets(android.view.WindowInsets.Type.systemBars() or android.view.WindowInsets.Type.ime())
+                view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+            } else {
+                // Android 10 (API 29): WindowInsets.Type does not exist yet
+                @Suppress("DEPRECATION")
+                view.setPadding(insets.systemWindowInsetLeft, insets.systemWindowInsetTop,
+                    insets.systemWindowInsetRight, insets.systemWindowInsetBottom)
+            }
             insets
         }
     }
