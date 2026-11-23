@@ -26,8 +26,11 @@ PC も ROS も不要です。
 - **マップ作成（SLAM）** — LiDAR と IMU を組み合わせた LIO で、歩きながら 3D マップを作成
 - **PCD 保存・閲覧** — 作ったマップを PCD ファイル（x y z intensity）で保存し、アプリ内のビューアで確認
 - **自己位置推定** — 保存したマップに対して NDT で現在位置を推定。初期位置は地図をタッチして指定でき、省略すれば自動で探索
-- **生データ記録** — 受信したパケットをそのまま保存（あとで再生・検証する用途）
+- **rosbag 記録** — 「● 記録」で ROS 2 bag（MCAP）を保存。`/livox/imu`（sensor_msgs/Imu）と `/livox/lidar`（sensor_msgs/PointCloud2、10 Hz、点ごとのタイムスタンプ付き）を記録し、`ros2 bag play` や Foxglove でそのまま開けます。待機中・マップ作成中・自己位置推定中のいつでも記録でき、設定で生パケットの記録にも切り替えられます
+- **rosbag から SLAM** — 記録した bag や PC で `ros2 bag record` した MCAP（無圧縮・zstd・lz4）を選び、実機の代わりに再生してマップ作成・自己位置推定（0.5x / 1x / 2x）。PointCloud2（点ごとの時刻フィールドに対応）と Livox CustomMsg、Imu のトピックを自動で選びます
+- **SFTP 送信** — PCD や rosbag を、登録した PC・サーバー（ホスト・ポート・ユーザー・転送先パス）に SFTP で送信。アプリで作る Ed25519 キーペア（公開鍵をコピーして登録）かパスワードで認証し、ホスト鍵は初回接続時に記憶します
 - **設定** — LiDAR の近くの点を無視する距離（規定 1.5 m）と、点群の色（反射強度 / 高さ）を変更
+- **詳細パラメータ** — LIO / NDT の調整値（距離・ボクセルサイズ・反復回数・ノイズ・LiDAR と IMU の位置関係など）を変更
 - **Mid-360 のネットワーク設定** — Mid-360 の IP アドレスと点群の送信先を、アプリから読み出し・変更
 - **デモモード** — Mid-360 がなくても、疑似データでライブ表示・マップ作成・PCD 保存・自己位置推定を試せる
 - **日本語 / 英語** — 端末の言語に合わせて切り替わります（Android 13 以降はアプリごとの言語設定も可）
@@ -63,6 +66,11 @@ PC も ROS も不要です。
    モードを「自己位置推定」に切り替えて「マップを選択」。
    必要なら「初期位置を指定」で地図をタッチ（そのままドラッグすると向きも指定）し、開始します。
 
+5. **rosbag を使う**
+   「● 記録」で `Android/data/com.example.mobilendt/files/` に MCAP が保存されます。上部の「rosbag」から bag を選ぶと、
+   開始ボタンでその bag を最初から再生してマップ作成・自己位置推定します。「実機に戻る」で Mid-360 に戻ります。
+   PCD ビューアと rosbag の一覧でファイルを長押しすると、共有・SFTP 送信・削除ができます（送信先とキーペアは 設定 → SFTP）。
+
 実機がなくても、設定 → デモ →「実機なしで試す」をオンにすると、部屋の中を歩く様子を再現した疑似データで一通り試せます。
 
 ## インストール
@@ -87,6 +95,7 @@ JDK 17 以上と Android SDK（Platform 36、NDK 28.2.13676358、CMake 3.22.1）
 ```
 app/    Android アプリ（Kotlin）と JNI
   src/main/cpp/Mid360Synth.hpp   デモ用の疑似 Mid-360
+  src/main/cpp/rosbag/           ROS 2 bag（MCAP）の記録・再生（iOS 版と共通）
   src/test/                      Mid-360 制御プロトコルの単体テスト（./gradlew testDebugUnitTest）
 core/   SLAM 本体（C++17、Eigen のみに依存）
   lio.*           LiDAR-IMU オドメトリ（反復誤差状態カルマンフィルタ）
@@ -94,6 +103,8 @@ core/   SLAM 本体（C++17、Eigen のみに依存）
   voxel_map.hpp   ボクセル地図
   livox_packet.hpp  Mid-360 のパケット解析
 third_party/eigen   Eigen 3.4.0（ヘッダーのみ）
+third_party/zstd    Zstandard 1.5.7（展開のみ）
+third_party/lz4     LZ4 1.10.0
 ```
 
 - LIO は FAST-LIO（W. Xu, F. Zhang, RA-L 2021）の定式化に沿った独自実装です。FAST-LIO のコードは含みません。

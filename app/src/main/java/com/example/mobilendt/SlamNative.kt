@@ -8,8 +8,11 @@ class SlamNative {
     fun start(mode: Int) = start(handle, mode)
     /** inten: optional per-point intensity (display only). */
     fun setPriorMap(xyz: FloatArray, inten: FloatArray?, n: Int): Boolean = setPriorMap(handle, xyz, inten, n)
-    /** Points closer than [m] metres are ignored. Applies from the next scan. */
-    fun setBlind(m: Float) = setBlind(handle, m)
+    /**
+     * Tuning parameters in the order of [P] (see [Settings.slamParams]). Scan / filter settings apply from the next
+     * scan, map resolutions from the next start.
+     */
+    fun setParams(p: FloatArray) = setParams(handle, p)
     /** Switch mode while stopped (resets state). */
     fun prepare(mode: Int) = prepare(handle, mode)
     /** Initial guess for localisation; hasYaw=false searches all headings. */
@@ -58,13 +61,40 @@ class SlamNative {
         const val SIZE = 22
     }
 
+    /** Indices into the parameter array of [setParams] / [defaultParams]. */
+    object P {
+        const val BLIND = 0
+        const val MAX_RANGE = 1
+        const val SCAN_DS = 2
+        const val MAP_RES = 3
+        const val VIS_RES = 4
+        const val MAX_ITER = 5
+        const val PLANE_THRESH = 6
+        const val KNN_MAX_D2 = 7
+        const val GYR_COV = 8
+        const val ACC_COV = 9
+        const val LASER_COV = 10
+        const val EXT_X = 11
+        const val EXT_Y = 12
+        const val EXT_Z = 13
+        const val NDT_RES = 14
+        const val LOC_MATCH_OK = 15
+        const val LOC_INIT_RADIUS = 16
+        const val SIZE = 17
+    }
+
     companion object {
         init { System.loadLibrary("mobilendt") }
+
+        /** Defaults of the SLAM core (core/lio.hpp LioConfig), in the order of [P]. */
+        fun defaultParams(): FloatArray = FloatArray(P.SIZE).also { defaultParams(it) }
+
         @JvmStatic private external fun create(): Long
         @JvmStatic private external fun destroy(h: Long)
         @JvmStatic private external fun start(h: Long, mode: Int)
         @JvmStatic private external fun setPriorMap(h: Long, xyz: FloatArray, inten: FloatArray?, n: Int): Boolean
-        @JvmStatic private external fun setBlind(h: Long, m: Float)
+        @JvmStatic private external fun setParams(h: Long, p: FloatArray)
+        @JvmStatic private external fun defaultParams(out: FloatArray)
         @JvmStatic private external fun prepare(h: Long, mode: Int)
         @JvmStatic private external fun setInitialPose(h: Long, x: Float, y: Float, z: Float, yaw: Float, hasYaw: Boolean)
         @JvmStatic private external fun stop(h: Long)

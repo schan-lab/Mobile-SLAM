@@ -15,16 +15,17 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
-import java.io.BufferedOutputStream
 import java.io.File
-import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
 class MainActivity : Activity() {
 
-    private companion object { const val REQ_PICK_MAP = 10 }
+    private companion object {
+        const val REQ_PICK_MAP = 10
+        const val REQ_PICK_BAG = 11
+    }
 
     private val points = PointBuffer(40_000)   // ~0.2 s of Mid-360 output
     private lateinit var receiver: LidarReceiver
@@ -46,11 +47,16 @@ class MainActivity : Activity() {
     private lateinit var mapPickBtn: TextView
     private lateinit var initBtn: TextView
     private lateinit var locRow: LinearLayout
+    private lateinit var bagRow: LinearLayout
+    private lateinit var bagBtn: TextView
 
     /** 0 = mapping (SLAM), 1 = localisation (NDT). */
     private var mode = 0
     private var mapName: String? = null
     private var loadingMap = false
+    /** ROS 2 bag used as the sensor instead of the Mid-360 (played while SLAM runs). */
+    private var bag: File? = null
+    private var bagProgress: BagStatus? = null
 
     private val ui = Handler(Looper.getMainLooper())
     private var prevT = 0L
@@ -58,7 +64,6 @@ class MainActivity : Activity() {
     private var prevPts = 0L
     private var prevImu = 0L
     private var tick = 0
-    private var recFile: File? = null
     private var mapStartMs = 0L
     private var showDetails = false
     private val st = DoubleArray(SlamNative.S.SIZE)
@@ -102,6 +107,10 @@ class MainActivity : Activity() {
             setPadding(Ui.dpi(c, 12f), 0, Ui.dpi(c, 12f), 0)
             setOnClickListener { startActivity(android.content.Intent(c, PcdListActivity::class.java)) }
         }
+        val bagListBtn = Ui.button(c, "rosbag", Ui.GREY, radius = 16f, textSize = 12f).apply {
+            setPadding(Ui.dpi(c, 12f), 0, Ui.dpi(c, 12f), 0)
+            setOnClickListener { pickBag() }
+        }
         val settingsBtn = Ui.button(c, getString(R.string.settings), Ui.GREY, radius = 16f, textSize = 12f).apply {
             setPadding(Ui.dpi(c, 12f), 0, Ui.dpi(c, 12f), 0)
             setOnClickListener { startActivity(android.content.Intent(c, SettingsActivity::class.java)) }
@@ -112,6 +121,7 @@ class MainActivity : Activity() {
             addView(phase)
             addView(headline, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = Ui.dpi(c, 10f) })
             addView(viewerBtn, LinearLayout.LayoutParams(-2, Ui.dpi(c, 32f)))
+            addView(bagListBtn, LinearLayout.LayoutParams(-2, Ui.dpi(c, 32f)).apply { marginStart = Ui.dpi(c, 6f) })
             addView(settingsBtn, LinearLayout.LayoutParams(-2, Ui.dpi(c, 32f)).apply { marginStart = Ui.dpi(c, 6f) })
         }
         details = Ui.text(c, 11f, Ui.TEXT_DIM).apply {
@@ -184,10 +194,26 @@ class MainActivity : Activity() {
             addView(mapPickBtn, LinearLayout.LayoutParams(0, Ui.dpi(c, 40f), 1.5f))
             addView(initBtn, LinearLayout.LayoutParams(0, Ui.dpi(c, 40f), 1f).apply { marginStart = Ui.dpi(c, 8f) })
         }
+        bagBtn = Ui.button(c, "", Ui.ACCENT, radius = 18f, textSize = 13f).apply {
+            isSingleLine = true
+            ellipsize = android.text.TextUtils.TruncateAt.MIDDLE
+            setPadding(Ui.dpi(c, 10f), 0, Ui.dpi(c, 10f), 0)
+            setOnClickListener { pickBag() }
+        }
+        val liveBtn = Ui.button(c, getString(R.string.back_to_live), Ui.GREY, radius = 18f, textSize = 13f).apply {
+            setOnClickListener { exitBag() }
+        }
+        bagRow = LinearLayout(c).apply {
+            orientation = LinearLayout.HORIZONTAL
+            visibility = View.GONE
+            addView(bagBtn, LinearLayout.LayoutParams(0, Ui.dpi(c, 40f), 1.5f))
+            addView(liveBtn, LinearLayout.LayoutParams(0, Ui.dpi(c, 40f), 1f).apply { marginStart = Ui.dpi(c, 8f) })
+        }
         mapView.onPosePicked = { x, y, yaw -> onPosePicked(x, y, yaw) }
         val bottom = LinearLayout(c).apply {
             orientation = LinearLayout.VERTICAL
             addView(hint, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = Ui.dpi(c, 6f) })
+            addView(bagRow, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = Ui.dpi(c, 8f) })
             addView(locRow, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = Ui.dpi(c, 8f) })
             addView(modeRow, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = Ui.dpi(c, 8f) })
             addView(controls, LinearLayout.LayoutParams(-1, -2))
@@ -218,9 +244,12 @@ class MainActivity : Activity() {
             if (mapView.pickMode) togglePickPose()
             receiver.restartDemoMotion()   // demo: stand still for the IMU initialisation
             slam.start(mode)
+            bag?.let { receiver.startBag(it, Settings.playSpeed(this)) }   // from the beginning
             mapStartMs = System.currentTimeMillis()
         } else {
             slam.stop()
+            receiver.stopBag()
+            bagProgress = null
         }
         slam.status(st)
         updatePhase()
@@ -283,7 +312,12 @@ class MainActivity : Activity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?) {
         @Suppress("DEPRECATION")
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode != REQ_PICK_MAP || resultCode != RESULT_OK) return
+        if (resultCode != RESULT_OK) return
+        if (requestCode == REQ_PICK_BAG) {
+            data?.getStringExtra(BagListActivity.EXTRA_PATH)?.let { selectBag(File(it)) }
+            return
+        }
+        if (requestCode != REQ_PICK_MAP) return
         val uri = data?.data ?: return
         val name = data.getStringExtra(PcdViewActivity.EXTRA_NAME) ?: "map.pcd"
         loadingMap = true
@@ -360,36 +394,103 @@ class MainActivity : Activity() {
 
     private fun toggleRecord() {
         val cur = receiver.recorder
-        if (cur == null) {
-            val name = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-            val f = File(getExternalFilesDir(null), "raw_$name.livox")
-            receiver.recordedBytes.set(0)
-            receiver.recorder = try {
-                BufferedOutputStream(FileOutputStream(f), 1 shl 20)
-            } catch (e: Exception) {
-                Toast.makeText(this, getString(R.string.record_failed, e.message ?: ""), Toast.LENGTH_LONG).show()
-                return
-            }
-            recFile = f
-            Ui.setButtonColor(recBtn, Ui.RED)
-        } else {
+        if (cur != null) {
             receiver.recorder = null
-            synchronized(cur) {
-                cur.flush()
-                cur.close()
-            }
+            cur.close()
             recBtn.text = getString(R.string.record)
             Ui.setButtonColor(recBtn, Ui.GREY)
-            Toast.makeText(this, getString(R.string.raw_saved, recFile?.name ?: ""), Toast.LENGTH_LONG).show()
-            Log.i(LidarReceiver.TAG, "record saved: ${recFile?.absolutePath}")
+            val fmt = if (cur is RosbagRecorder) R.string.bag_saved else R.string.raw_saved
+            Toast.makeText(this, getString(fmt, cur.file.name), Toast.LENGTH_LONG).show()
+            Log.i(LidarReceiver.TAG, "record saved: ${cur.file.absolutePath}")
+            return
         }
+        val dir = AppFiles.recordDir(this)
+        receiver.recorder = try {
+            when (Settings.recordFormat(this)) {
+                Settings.RecordFormat.ROSBAG -> RosbagRecorder(File(dir, "rosbag_${AppFiles.timestamp()}.mcap"))
+                Settings.RecordFormat.RAW -> RawRecorder(File(dir, "raw_${AppFiles.timestamp()}.livox"))
+            }
+        } catch (e: Exception) {
+            Toast.makeText(this, getString(R.string.record_failed, e.message ?: ""), Toast.LENGTH_LONG).show()
+            return
+        }
+        recBtn.text = getString(R.string.record_size, 0.0)
+        Ui.setButtonColor(recBtn, Ui.RED)
+    }
+
+    // ------------------------------------------------------------------ rosbag playback
+
+    private fun pickBag() {
+        slam.status(st)
+        if (mapping()) {
+            Toast.makeText(this, R.string.stop_to_pick_bag, Toast.LENGTH_SHORT).show()
+            return
+        }
+        @Suppress("DEPRECATION")
+        startActivityForResult(android.content.Intent(this, BagListActivity::class.java), REQ_PICK_BAG)
+    }
+
+    /** Uses the bag as the sensor: starting SLAM plays it from the beginning. */
+    private fun selectBag(f: File) {
+        kotlin.concurrent.thread(name = "bag-probe") {
+            val s = RosbagPlayer.probe(f)
+            runOnUiThread {
+                if (s.state == 2) {
+                    Toast.makeText(this, getString(R.string.bag_unreadable, s.error), Toast.LENGTH_LONG).show()
+                    return@runOnUiThread
+                }
+                slam.status(st)
+                if (mapping()) slam.stop()
+                receiver.stopBag()
+                if (Settings.demoMode) {
+                    Settings.demoMode = false
+                    receiver.stopDemo()
+                }
+                bag = f
+                bagProgress = null
+                Toast.makeText(this, getString(R.string.bag_selected, s.lidarTopic, s.imuTopic), Toast.LENGTH_LONG).show()
+                updateBagUi()
+                updateStatus()
+            }
+        }
+    }
+
+    /** Back to the live sensor. */
+    private fun exitBag() {
+        if (bag == null) return
+        slam.status(st)
+        if (mapping()) slam.stop()
+        receiver.stopBag()
+        bag = null
+        bagProgress = null
+        updateBagUi()
+        updateStatus()
+    }
+
+    private fun updateBagUi() {
+        val b = bag
+        bagRow.visibility = if (b != null) View.VISIBLE else View.GONE
+        bagBtn.text = if (b != null) "▶ ${b.name}" else ""
+    }
+
+    /** Stops SLAM when the bag has been played to the end (the map stays for saving). */
+    private fun checkBag() {
+        if (bag == null) return
+        val s = receiver.bagStatus ?: return
+        bagProgress = s
+        if (s.state == 0) return
+        slam.stop()
+        receiver.stopBag()
+        slam.status(st)
+        val msg = if (s.state == 1) getString(R.string.bag_finished) else getString(R.string.bag_error, s.error)
+        Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
     }
 
     // ------------------------------------------------------------------ lifecycle
 
     /** Pushes the saved settings to the SLAM core and the view (called whenever we come to the front). */
     private fun applySettings() {
-        slam.setBlind(Settings.blind(this))
+        slam.setParams(Settings.slamParams(this))
         mapView.colorMode = Settings.colorMode(this)
     }
 
@@ -397,7 +498,10 @@ class MainActivity : Activity() {
         super.onStart()
         applySettings()
         receiver.start()
-        if (Settings.demoMode) receiver.startDemo()
+        if (Settings.demoMode) {
+            exitBag()   // the demo was turned on in Settings
+            receiver.startDemo()
+        }
         mapView.onResume()
         prevT = System.nanoTime()
         ui.post(refresh)
@@ -409,6 +513,8 @@ class MainActivity : Activity() {
         slam.status(st)
         if (mapping()) slam.stop()   // map is kept; only start() resets
         mapView.onPause()
+        receiver.stopBag()
+        bagProgress = null
         receiver.stopDemo()
         receiver.stop()
         slam.status(st)
@@ -466,11 +572,12 @@ class MainActivity : Activity() {
         prevPkts = pk
         prevPts = pt
         prevImu = im
+        checkBag()
         slam.status(st)
 
         val ethUp = receiver.ethAddrs != "-"
         Ui.setChip(chipEth, ethUp, if (ethUp) "Ethernet" else getString(R.string.eth_none))
-        val lidarName = if (receiver.demoRunning) getString(R.string.demo) else "Mid-360"
+        val lidarName = if (bag != null) "rosbag" else if (receiver.demoRunning) getString(R.string.demo) else "Mid-360"
         Ui.setChip(chipLidar, pps > 100,
             if (pps > 100) getString(R.string.lidar_rate, lidarName, ptps / 1000) else getString(R.string.lidar_none))
         Ui.setChip(chipImu, ips > 50, "IMU %.0fHz".format(ips))
@@ -479,7 +586,7 @@ class MainActivity : Activity() {
         val status = st[SlamNative.S.STATUS].toInt()
         val loc = st[SlamNative.S.LOC_STATE].toInt()
         headline.text = when {
-            mapping() && status != 2 -> getString(R.string.hold_still)
+            mapping() && status != 2 -> getString(if (bag != null) R.string.imu_init else R.string.hold_still)
             mode == 1 && mapping() -> when (loc) {
                 2 -> getString(R.string.loc_match, st[SlamNative.S.MATCH] * 100,
                     st[SlamNative.S.PX], st[SlamNative.S.PY], Math.toDegrees(st[SlamNative.S.YAW]))
@@ -487,21 +594,27 @@ class MainActivity : Activity() {
                 else -> getString(R.string.loc_matching)
             }
             mode == 1 -> getString(if (st[SlamNative.S.HAS_PRIOR] > 0.5) R.string.loc_ready else R.string.loc_choose)
+            mapping() && bag != null && bagProgress != null -> getString(R.string.bag_progress,
+                (bagProgress?.progress ?: 0.0) * 100, "%,d".format(st[SlamNative.S.VIS_SIZE].toLong()))
             mapping() -> {
                 val sec = ((System.currentTimeMillis() - mapStartMs) / 1000).toInt()
                 getString(R.string.mapping_progress, sec / 60, sec % 60, "%,d".format(st[SlamNative.S.VIS_SIZE].toLong()))
             }
             st[SlamNative.S.SCANS] > 0 -> getString(R.string.can_save, "%,d".format(st[SlamNative.S.VIS_SIZE].toLong()))
+            bag != null -> getString(R.string.bag_press_start)
             receiver.demoRunning -> getString(R.string.demo_press_start)
             pps <= 100 -> getString(R.string.waiting_lidar)
             else -> getString(R.string.waiting)
         }
-        receiver.recorder?.let { recBtn.text = getString(R.string.record_size, receiver.recordedBytes.get() / 1e6) }
+        receiver.recorder?.let { recBtn.text = getString(R.string.record_size, it.bytes / 1e6) }
 
         details.text = buildString {
             appendLine("${receiver.ethState}${receiver.bindNote}")
             appendLine(receiver.ethAddrs)
             appendLine("LiDAR ${receiver.lidarInfo}  from ${receiver.lidarSrc}")
+            val p = bagProgress
+            if (bag != null && p != null) appendLine("bag %.1f/%.1f s  %s %d  %s %d".format(p.elapsed, p.duration,
+                p.lidarTopic, p.pointMsgs, p.imuTopic, p.imuMsgs))
             appendLine("pkt %.0f/s  pts %.0f/s  lost %d".format(pps, ptps, receiver.lostPackets.get()))
             if (mode == 1) appendLine("NDT %.1f ms  match %.2f  state %d".format(
                 st[SlamNative.S.NDT_MS], st[SlamNative.S.MATCH], st[SlamNative.S.LOC_STATE].toInt()))

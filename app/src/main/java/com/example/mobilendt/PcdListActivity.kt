@@ -147,11 +147,11 @@ class PcdListActivity : Activity() {
     private fun showActions(item: Item) {
         AlertDialog.Builder(this)
             .setTitle(item.name)
-            .setItems(arrayOf(getString(R.string.share), getString(R.string.delete))) { _, which ->
-                if (which == 0) {
-                    PcdViewActivity.share(this, item.uri)
-                } else {
-                    confirmDelete(item)
+            .setItems(arrayOf(getString(R.string.share), getString(R.string.sftp_send), getString(R.string.delete))) { _, which ->
+                when (which) {
+                    0 -> PcdViewActivity.share(this, item.uri)
+                    1 -> SftpSendActivity.start(this, item.uri, item.name, item.size)
+                    else -> confirmDelete(item)
                 }
             }
             .show()

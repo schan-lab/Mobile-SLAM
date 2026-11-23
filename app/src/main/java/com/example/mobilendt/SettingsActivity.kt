@@ -17,6 +17,10 @@ class SettingsActivity : Activity() {
     private lateinit var blindValue: TextView
     private lateinit var colorIntensity: TextView
     private lateinit var colorHeight: TextView
+    private lateinit var blindSeek: SeekBar
+    private lateinit var formatBag: TextView
+    private lateinit var formatRaw: TextView
+    private val speedBtns = mutableListOf<Pair<Double, TextView>>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -41,7 +45,7 @@ class SettingsActivity : Activity() {
             addView(blindValue)
         }
         val steps = (Settings.MAX_BLIND * 10).roundToInt()
-        val seek = SeekBar(c).apply {
+        blindSeek = SeekBar(c).apply {
             max = steps
             progress = (Settings.blind(c) * 10).roundToInt()
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
@@ -60,14 +64,59 @@ class SettingsActivity : Activity() {
             setPadding(Ui.dpi(c, 14f), 0, Ui.dpi(c, 14f), 0)
             setOnClickListener {
                 Settings.setBlind(c, Settings.DEFAULT_BLIND)
-                seek.progress = (Settings.DEFAULT_BLIND * 10).roundToInt()
+                blindSeek.progress = (Settings.DEFAULT_BLIND * 10).roundToInt()
             }
         }
         val slamCard = card("SLAM").apply {
             addView(blindHead)
-            addView(seek, LinearLayout.LayoutParams(-1, -2).apply { topMargin = Ui.dpi(c, 10f) })
+            addView(blindSeek, LinearLayout.LayoutParams(-1, -2).apply { topMargin = Ui.dpi(c, 10f) })
             addView(blindNote, LinearLayout.LayoutParams(-1, -2).apply { topMargin = Ui.dpi(c, 6f) })
             addView(reset, LinearLayout.LayoutParams(-2, Ui.dpi(c, 34f)).apply { topMargin = Ui.dpi(c, 10f) })
+            addView(Ui.navRow(c, getString(R.string.params_title)) {
+                startActivity(android.content.Intent(c, SlamParamsActivity::class.java))
+            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = Ui.dpi(c, 10f) })
+        }
+
+        // ---- rosbag: recording format, playback speed ----
+        formatBag = Ui.button(c, "ROS 2 (MCAP)", Ui.GREY, radius = 18f, textSize = 14f).apply {
+            setOnClickListener {
+                Settings.setRecordFormat(c, Settings.RecordFormat.ROSBAG)
+                showBag()
+            }
+        }
+        formatRaw = Ui.button(c, getString(R.string.record_raw), Ui.GREY, radius = 18f, textSize = 14f).apply {
+            setOnClickListener {
+                Settings.setRecordFormat(c, Settings.RecordFormat.RAW)
+                showBag()
+            }
+        }
+        val formatRow = LinearLayout(c).apply {
+            orientation = LinearLayout.HORIZONTAL
+            addView(formatBag, LinearLayout.LayoutParams(0, Ui.dpi(c, 44f), 1f))
+            addView(formatRaw, LinearLayout.LayoutParams(0, Ui.dpi(c, 44f), 1f).apply { marginStart = Ui.dpi(c, 8f) })
+        }
+        val speedRow = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL }
+        for (v in Settings.PLAY_SPEEDS) {
+            val b = Ui.button(c, "%sx".format(if (v == Math.floor(v)) v.toInt().toString() else v.toString()), Ui.GREY,
+                radius = 18f, textSize = 14f).apply {
+                setOnClickListener {
+                    Settings.setPlaySpeed(c, v)
+                    showBag()
+                }
+            }
+            speedBtns += v to b
+            speedRow.addView(b, LinearLayout.LayoutParams(0, Ui.dpi(c, 44f), 1f).apply {
+                if (speedRow.childCount > 0) marginStart = Ui.dpi(c, 8f)
+            })
+        }
+        val bagCard = card("rosbag").apply {
+            addView(Ui.text(c, 15f, bold = true).apply { text = getString(R.string.record_format) })
+            addView(formatRow, LinearLayout.LayoutParams(-1, -2).apply { topMargin = Ui.dpi(c, 10f) })
+            addView(Ui.note(c, getString(R.string.record_format_note)), LinearLayout.LayoutParams(-1, -2).apply { topMargin = Ui.dpi(c, 8f) })
+            addView(Ui.text(c, 15f, bold = true).apply { text = getString(R.string.play_speed) },
+                LinearLayout.LayoutParams(-1, -2).apply { topMargin = Ui.dpi(c, 14f) })
+            addView(speedRow, LinearLayout.LayoutParams(-1, -2).apply { topMargin = Ui.dpi(c, 10f) })
+            addView(Ui.note(c, getString(R.string.play_speed_note)), LinearLayout.LayoutParams(-1, -2).apply { topMargin = Ui.dpi(c, 8f) })
         }
 
         // ---- display: point colour ----
@@ -106,6 +155,15 @@ class SettingsActivity : Activity() {
                 LinearLayout.LayoutParams(-1, -2).apply { topMargin = Ui.dpi(c, 6f) })
         }
 
+        // ---- SFTP ----
+        val sftpCard = card("SFTP").apply {
+            addView(Ui.navRow(c, getString(R.string.sftp_keys_and_hosts)) {
+                startActivity(android.content.Intent(c, SftpSettingsActivity::class.java))
+            })
+            addView(Ui.note(c, getString(R.string.sftp_settings_note)),
+                LinearLayout.LayoutParams(-1, -2).apply { topMargin = Ui.dpi(c, 6f) })
+        }
+
         // ---- demo ----
         val demoSwitch = Switch(c).apply {
             text = getString(R.string.demo_try)
@@ -141,8 +199,10 @@ class SettingsActivity : Activity() {
             setPadding(pad, pad, pad, pad)
             addView(top)
             addView(slamCard, LinearLayout.LayoutParams(-1, -2).apply { topMargin = Ui.dpi(c, 14f) })
+            addView(bagCard, LinearLayout.LayoutParams(-1, -2).apply { topMargin = Ui.dpi(c, 12f) })
             addView(colorCard, LinearLayout.LayoutParams(-1, -2).apply { topMargin = Ui.dpi(c, 12f) })
             addView(netCard, LinearLayout.LayoutParams(-1, -2).apply { topMargin = Ui.dpi(c, 12f) })
+            addView(sftpCard, LinearLayout.LayoutParams(-1, -2).apply { topMargin = Ui.dpi(c, 12f) })
             addView(demoCard, LinearLayout.LayoutParams(-1, -2).apply { topMargin = Ui.dpi(c, 12f) })
             addView(aboutCard, LinearLayout.LayoutParams(-1, -2).apply { topMargin = Ui.dpi(c, 12f) })
         }
@@ -153,8 +213,15 @@ class SettingsActivity : Activity() {
             Ui.padForSystemBars(this)
         }
         setContentView(root)
-        showBlind(Settings.blind(c))
         showColor()
+        showBag()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // the parameter screen can reset blind
+        blindSeek.progress = (Settings.blind(this) * 10).roundToInt()
+        showBlind(Settings.blind(this))
     }
 
     /** A card with a small section label on top. */
@@ -168,5 +235,13 @@ class SettingsActivity : Activity() {
         val mode = Settings.colorMode(this)
         Ui.setButtonColor(colorIntensity, if (mode == Settings.COLOR_INTENSITY) Ui.ACCENT else Ui.GREY, 18f)
         Ui.setButtonColor(colorHeight, if (mode == Settings.COLOR_HEIGHT) Ui.ACCENT else Ui.GREY, 18f)
+    }
+
+    private fun showBag() {
+        val f = Settings.recordFormat(this)
+        Ui.setButtonColor(formatBag, if (f == Settings.RecordFormat.ROSBAG) Ui.ACCENT else Ui.GREY, 18f)
+        Ui.setButtonColor(formatRaw, if (f == Settings.RecordFormat.RAW) Ui.ACCENT else Ui.GREY, 18f)
+        val speed = Settings.playSpeed(this)
+        for ((v, b) in speedBtns) Ui.setButtonColor(b, if (v == speed) Ui.ACCENT else Ui.GREY, 18f)
     }
 }
