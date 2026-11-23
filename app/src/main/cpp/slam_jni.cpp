@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <condition_variable>
 #include <deque>
 #include <memory>
@@ -113,6 +114,8 @@ private:
 
 Engine* E(jlong h) { return reinterpret_cast<Engine*>(h); }
 
+constexpr int kParamCount = 17;
+
 }  // namespace
 
 extern "C" {
@@ -163,12 +166,41 @@ JNIEXPORT jboolean JNICALL Java_com_example_mobilendt_SlamNative_setPriorMap(JNI
     return E(h)->lio.hasPriorMap();
 }
 
-/// Points closer than this (m) are ignored by SLAM / localisation. Applies from the next scan.
-JNIEXPORT void JNICALL Java_com_example_mobilendt_SlamNative_setBlind(JNIEnv*, jclass, jlong h, jfloat m) {
+/// Tuning parameters, in the order of SlamNative.P. Writes the defaults of core/lio.hpp LioConfig.
+JNIEXPORT void JNICALL Java_com_example_mobilendt_SlamNative_defaultParams(JNIEnv* env, jclass, jfloatArray out) {
+    const mndt::LioConfig c;
+    const float v[kParamCount] = {float(c.blind), float(c.max_range), float(c.scan_ds), float(c.map_res),
+                                  float(c.vis_res), float(c.max_iter), float(c.plane_thresh), float(c.knn_max_d2),
+                                  float(c.gyr_cov), float(c.acc_cov), float(c.laser_cov), float(c.t_LI[0]),
+                                  float(c.t_LI[1]), float(c.t_LI[2]), float(c.ndt_res), float(c.loc_match_ok),
+                                  float(c.loc_init_radius)};
+    env->SetFloatArrayRegion(out, 0, kParamCount, v);
+}
+
+/// Applies the parameters (order of SlamNative.P). Scan / filter settings take effect from the next scan,
+/// map resolutions from the next start.
+JNIEXPORT void JNICALL Java_com_example_mobilendt_SlamNative_setParams(JNIEnv* env, jclass, jlong h, jfloatArray in) {
+    float p[kParamCount];
+    env->GetFloatArrayRegion(in, 0, kParamCount, p);
     Engine* e = E(h);
     std::lock_guard<std::mutex> ll(e->lio_mtx_);
-    e->lio.setBlind(m);
-    LOGI("blind %.2f m", m);
+    mndt::LioConfig c = e->lio.config();
+    c.blind = std::max(0.f, p[0]);
+    c.max_range = std::max(1.f, p[1]);
+    c.scan_ds = std::max(0.02f, p[2]);
+    c.map_res = std::max(0.02f, p[3]);
+    c.vis_res = std::max(0.01f, p[4]);
+    c.max_iter = std::clamp(int(std::lround(p[5])), 1, 20);
+    c.plane_thresh = std::max(0.005f, p[6]);
+    c.knn_max_d2 = std::max(0.01f, p[7]);
+    c.gyr_cov = std::max(1e-6f, p[8]);
+    c.acc_cov = std::max(1e-6f, p[9]);
+    c.laser_cov = std::max(1e-6f, p[10]);
+    c.t_LI = mndt::Vec3(p[11], p[12], p[13]);
+    c.ndt_res = std::max(0.1f, p[14]);
+    c.loc_match_ok = std::clamp(p[15], 0.f, 1.f);
+    c.loc_init_radius = std::max(0.f, p[16]);
+    e->lio.setConfig(c);
 }
 
 JNIEXPORT void JNICALL Java_com_example_mobilendt_SlamNative_stop(JNIEnv*, jclass, jlong h) {

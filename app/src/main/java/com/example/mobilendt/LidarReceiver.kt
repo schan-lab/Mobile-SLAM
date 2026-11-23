@@ -7,6 +7,7 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.util.Log
+import java.io.File
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
@@ -52,25 +53,15 @@ class LidarReceiver(private val context: Context, val points: PointBuffer) {
     @Volatile private var running = false
     @Volatile var bindNote: String = ""
 
-    /** Optional raw packet sink: record format = [type u8 (1=point,2=imu)][len u16 LE][bytes]. */
-    @Volatile var recorder: java.io.OutputStream? = null
-    val recordedBytes = AtomicLong()
+    /** Optional packet recorder (ROS 2 bag or raw packets). */
+    @Volatile var recorder: PacketRecording? = null
 
     /** Optional consumer of raw packets (e.g. the SLAM core). type: 1=point, 2=imu */
     @Volatile var packetSink: ((Int, ByteArray, Int) -> Unit)? = null
 
     private fun record(type: Int, buf: ByteArray, len: Int) {
         packetSink?.invoke(type, buf, len)
-        val out = recorder ?: return
-        synchronized(out) {
-            try {
-                out.write(type)
-                out.write(len and 0xFF)
-                out.write((len shr 8) and 0xFF)
-                out.write(buf, 0, len)
-                recordedBytes.addAndGet(len + 3L)
-            } catch (e: Exception) { Log.w(TAG, "record: ${e.message}") }
-        }
+        recorder?.write(type, buf, len)
     }
     private var lastUdpCnt = -1
 
@@ -149,6 +140,29 @@ class LidarReceiver(private val context: Context, val points: PointBuffer) {
 
     /** The simulated sensor stands still for 3 s (IMU initialisation), then moves again. */
     fun restartDemoMotion() { demo?.restartMotion() }
+
+    // --------------------------------------------------------------- rosbag playback
+
+    private var player: RosbagPlayer? = null
+
+    /** Plays a ROS 2 bag through the same path as real UDP packets (call from the main thread). */
+    fun startBag(file: File, speed: Double) {
+        stopBag()
+        lastUdpCnt = -1
+        lidarInfo = "rosbag ${file.name}"
+        player = RosbagPlayer(file, speed) { type, buf, len -> if (type == 1) onPoint(buf, len, null) else onImu(buf, len) }
+    }
+
+    val bagStatus: BagStatus? get() = player?.status()
+
+    fun stopBag() {
+        val p = player ?: return
+        p.stop()   // joins the thread: no callbacks after this
+        player = null
+        lidarInfo = context.getString(R.string.not_detected)
+        lidarSrc = "-"
+        lastUdpCnt = -1
+    }
 
     // ---------------------------------------------------------------
 

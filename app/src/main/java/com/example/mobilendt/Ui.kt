@@ -160,6 +160,98 @@ object Ui {
         })
     }
 
+    /** Back button, title and an optional button on the right. */
+    fun topBar(a: android.app.Activity, title: String, right: View? = null) = LinearLayout(a).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        val back = button(a, "←", GREY, radius = 20f, textSize = 18f).apply { setOnClickListener { a.finish() } }
+        addView(back, LinearLayout.LayoutParams(dpi(a, 40f), dpi(a, 40f)))
+        val t = text(a, 20f, bold = true).apply {
+            text = title
+            isSingleLine = true
+            ellipsize = android.text.TextUtils.TruncateAt.END
+        }
+        addView(t, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = dpi(a, 12f) })
+        if (right != null) addView(right, LinearLayout.LayoutParams(-2, dpi(a, 40f)).apply { marginStart = dpi(a, 8f) })
+    }
+
+    /** Small rounded button for a top bar or a card. */
+    fun smallButton(c: Context, label: String, color: Int = ACCENT, onClick: () -> Unit) =
+        button(c, label, color, radius = 20f, textSize = 13f).apply {
+            setPadding(dpi(c, 14f), 0, dpi(c, 14f), 0)
+            setOnClickListener { onClick() }
+        }
+
+    /** List card: icon, bold title and a dim second line. */
+    fun listRow(c: Context, icon: String, title: String, meta: String) = LinearLayout(c).apply {
+        val iconView = text(c, 20f, ACCENT, bold = true).apply {
+            text = icon
+            gravity = Gravity.CENTER
+            background = rounded(0x223D8BFF, dp(c, 12f))
+        }
+        val texts = LinearLayout(c).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(text(c, 15f, bold = true).apply {
+                text = title
+                isSingleLine = true
+                ellipsize = android.text.TextUtils.TruncateAt.MIDDLE
+            })
+            addView(text(c, 12f, TEXT_DIM).apply { text = meta })
+        }
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        background = card(c)
+        setPadding(dpi(c, 12f), dpi(c, 12f), dpi(c, 12f), dpi(c, 12f))
+        addView(iconView, LinearLayout.LayoutParams(dpi(c, 44f), dpi(c, 44f)))
+        addView(texts, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = dpi(c, 12f) })
+        isClickable = true
+    }
+
+    /** Single-line text input in the style of [ipField]. */
+    fun field(c: Context, value: String, hint: String, inputType: Int = InputType.TYPE_CLASS_TEXT or
+        InputType.TYPE_TEXT_VARIATION_URI, onChange: (String) -> Unit) = EditText(c).apply {
+        setText(value)
+        this.hint = hint
+        setHintTextColor(GREY)
+        setTextColor(TEXT)
+        textSize = 15f
+        isSingleLine = true
+        this.inputType = inputType
+        background = rounded(0x0FFFFFFF, dp(c, 8f))
+        setPadding(dpi(c, 10f), 0, dpi(c, 10f), 0)
+        addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, d: Int) {}
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, d: Int) {}
+            override fun afterTextChanged(e: Editable) = onChange(e.toString())
+        })
+    }
+
+    /** Label on the left, [input] on the right. */
+    fun labeled(c: Context, label: String, input: View) = LinearLayout(c).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        addView(text(c, 14f).apply { text = label }, LinearLayout.LayoutParams(dpi(c, 120f), -2))
+        addView(input, LinearLayout.LayoutParams(0, dpi(c, 44f), 1f))
+    }
+
+    /** Scrolling screen: [column] centred, at most 700 dp wide, padded for the system bars. */
+    fun screen(c: Context, column: View) = android.widget.ScrollView(c).apply {
+        setBackgroundColor(BG)
+        isFillViewport = true
+        addView(capWidth(c, column, 700f))
+        padForSystemBars(this)
+    }
+
+    /** Vertical column with the standard screen padding. */
+    fun column(c: Context) = LinearLayout(c).apply {
+        val p = dpi(c, 12f)
+        orientation = LinearLayout.VERTICAL
+        setPadding(p, p, p, p)
+    }
+
+    /** Layout params: full width, [top] dp above. */
+    fun below(c: Context, top: Float) = LinearLayout.LayoutParams(-1, -2).apply { topMargin = dpi(c, top) }
+
     /** Navigation row: bold label and a chevron. */
     fun navRow(c: Context, label: String, onClick: () -> Unit) = LinearLayout(c).apply {
         orientation = LinearLayout.HORIZONTAL

@@ -37,6 +37,7 @@ class AboutActivity : Activity() {
             addView(block(getString(R.string.about_license_mit), MIT, mono = true))
             addView(block(getString(R.string.about_license_eigen), EIGEN, mono = true))
             addView(block("Kotlin standard library / LLVM libc++", OTHERS, mono = true))
+            addView(block(getString(R.string.about_license_others), thirdParty(), mono = true))
         }
         val root = ScrollView(c).apply {
             setBackgroundColor(Ui.BG)
@@ -46,6 +47,11 @@ class AboutActivity : Activity() {
         }
         setContentView(root)
     }
+
+    /** zstd, lz4, JSch (SFTP) and Bouncy Castle (res/raw/third_party_licenses.txt). */
+    private fun thirdParty(): String =
+        runCatching { resources.openRawResource(R.raw.third_party_licenses).bufferedReader().use { it.readText() } }
+            .getOrDefault("-")
 
     private fun block(title: String, text: String, mono: Boolean = false) = LinearLayout(this).apply {
         val c = context

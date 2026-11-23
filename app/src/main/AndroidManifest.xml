@@ -9,7 +9,9 @@
         android:label="@string/app_name"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
-        android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+        android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
+        android:fullBackupContent="@xml/backup_rules"
+        android:dataExtractionRules="@xml/data_extraction_rules">
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -31,5 +33,18 @@
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />
         <activity android:name=".AboutActivity" android:exported="false" />
+        <activity android:name=".SlamParamsActivity" android:exported="false" />
+        <activity android:name=".BagListActivity" android:exported="false" />
+        <activity android:name=".SftpSettingsActivity" android:exported="false" />
+        <activity
+            android:name=".SftpHostEditActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".SftpSendActivity" android:exported="false" />
+        <provider
+            android:name=".FileShareProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true" />
     </application>
 </manifest>
